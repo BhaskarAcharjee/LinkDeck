@@ -8,6 +8,7 @@ import {
   Settings,
   Upload,
   Moon,
+  Trash2,
   CornerDownLeft,
   X
 } from 'lucide-react';
@@ -31,6 +32,7 @@ interface CommandPaletteProps {
   onOpenAccountManager: () => void;
   onOpenImportExport: () => void;
   onToggleTheme: () => void;
+  onDeleteAllBookmarks?: () => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -46,7 +48,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenRoutingLab,
   onOpenAccountManager,
   onOpenImportExport,
-  onToggleTheme
+  onToggleTheme,
+  onDeleteAllBookmarks
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -110,7 +113,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       subtitle: 'Switch between Dark and Light mode',
       icon: Moon,
       run: onToggleTheme
-    }
+    },
+    ...(onDeleteAllBookmarks && bookmarks.length > 0
+      ? [
+          {
+            id: 'act_delete_all',
+            title: 'Delete All Bookmarks',
+            subtitle: `Permanently remove all ${bookmarks.length} bookmarks from local storage`,
+            icon: Trash2,
+            run: onDeleteAllBookmarks
+          }
+        ]
+      : [])
   ];
 
   const filteredActions = isCommandMode

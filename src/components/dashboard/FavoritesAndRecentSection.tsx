@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Clock, Flame } from 'lucide-react';
+import { Star, Clock, Flame, Trash2 } from 'lucide-react';
 import type { Bookmark, Project, Collection, AccountProfile } from '../../core/types';
 import { BookmarkCard } from '../bookmarks/BookmarkCard';
 
@@ -10,6 +10,7 @@ interface FavoritesAndRecentSectionProps {
   accounts: AccountProfile[];
   onEditBookmark: (bookmark: Bookmark) => void;
   onDeleteBookmark: (bookmarkId: string) => void;
+  onDeleteAllBookmarks: () => void;
   onRequestAccountPick: (bookmark: Bookmark) => void;
   onOpenBookmark: (bookmark: Bookmark, account?: AccountProfile) => void;
 }
@@ -21,6 +22,7 @@ export const FavoritesAndRecentSection: React.FC<FavoritesAndRecentSectionProps>
   accounts,
   onEditBookmark,
   onDeleteBookmark,
+  onDeleteAllBookmarks,
   onRequestAccountPick,
   onOpenBookmark
 }) => {
@@ -52,10 +54,10 @@ export const FavoritesAndRecentSection: React.FC<FavoritesAndRecentSectionProps>
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-deck-bg-border pb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto">
           <button
             onClick={() => setFilterTab('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition shrink-0 ${
               filterTab === 'all'
                 ? 'bg-deck-bg-elevated text-white border border-deck-bg-border shadow-sm'
                 : 'text-slate-400 hover:text-white'
@@ -66,7 +68,7 @@ export const FavoritesAndRecentSection: React.FC<FavoritesAndRecentSectionProps>
 
           <button
             onClick={() => setFilterTab('favorites')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shrink-0 ${
               filterTab === 'favorites'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                 : 'text-slate-400 hover:text-amber-300'
@@ -78,7 +80,7 @@ export const FavoritesAndRecentSection: React.FC<FavoritesAndRecentSectionProps>
 
           <button
             onClick={() => setFilterTab('recent')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shrink-0 ${
               filterTab === 'recent'
                 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                 : 'text-slate-400 hover:text-cyan-300'
@@ -90,7 +92,7 @@ export const FavoritesAndRecentSection: React.FC<FavoritesAndRecentSectionProps>
 
           <button
             onClick={() => setFilterTab('frequent')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shrink-0 ${
               filterTab === 'frequent'
                 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                 : 'text-slate-400 hover:text-rose-300'
@@ -101,9 +103,22 @@ export const FavoritesAndRecentSection: React.FC<FavoritesAndRecentSectionProps>
           </button>
         </div>
 
-        <span className="text-[11px] text-slate-500 font-mono">
-          Showing {displayedBookmarks.length} links
-        </span>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="text-[11px] text-slate-500 font-mono">
+            Showing {displayedBookmarks.length} links
+          </span>
+
+          {bookmarks.length > 0 && (
+            <button
+              onClick={onDeleteAllBookmarks}
+              className="px-2.5 py-1 text-xs text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 rounded-lg transition flex items-center gap-1.5"
+              title="Delete all bookmarks"
+            >
+              <Trash2 size={13} />
+              <span>Delete All</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {displayedBookmarks.length > 0 ? (

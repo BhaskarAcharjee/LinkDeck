@@ -67,6 +67,10 @@ export class BookmarkRepository {
     await db.bookmarks.delete(id);
   }
 
+  static async deleteAll(): Promise<void> {
+    await db.bookmarks.clear();
+  }
+
   static async recordOpen(id: string): Promise<void> {
     const bookmark = await db.bookmarks.get(id);
     if (!bookmark) return;

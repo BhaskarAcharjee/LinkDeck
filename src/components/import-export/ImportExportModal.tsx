@@ -7,7 +7,8 @@ import {
   FileCode,
   FileJson,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import type { Bookmark, Collection } from '../../core/types';
@@ -23,6 +24,7 @@ interface ImportExportModalProps {
   bookmarks: Bookmark[];
   collections: Collection[];
   onRefresh: () => void;
+  onDeleteAllBookmarks?: () => void;
 }
 
 export const ImportExportModal: React.FC<ImportExportModalProps> = ({
@@ -30,7 +32,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   onClose,
   bookmarks,
   collections,
-  onRefresh
+  onRefresh,
+  onDeleteAllBookmarks
 }) => {
   const [activeTab, setActiveTab] = useState<'import' | 'export'>('import');
   const [parsedItems, setParsedItems] = useState<ParsedBookmarkItem[]>([]);
@@ -321,13 +324,13 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               </div>
             ) : (
               /* Export View */
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <p className="text-xs text-slate-400 leading-relaxed">
                   Export all your LinkDeck bookmarks, projects, collections, and Google routing rules.
                   You can restore this backup on any browser or machine without an account.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="p-5 rounded-2xl bg-deck-bg-elevated border border-deck-bg-border hover:border-cyan-500/40 transition flex flex-col justify-between space-y-4">
                     <div className="space-y-2">
                       <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
@@ -366,6 +369,31 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* Danger Zone: Delete All Bookmarks */}
+                {onDeleteAllBookmarks && bookmarks.length > 0 && (
+                  <div className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4">
+                    <div>
+                      <h5 className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
+                        <Trash2 size={13} />
+                        <span>Danger Zone — Reset Bookmarks</span>
+                      </h5>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Permanently delete all {bookmarks.length} bookmarks from local storage.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onDeleteAllBookmarks();
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-semibold text-xs transition flex items-center gap-1.5 shrink-0"
+                    >
+                      <Trash2 size={13} />
+                      <span>Delete All Bookmarks</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

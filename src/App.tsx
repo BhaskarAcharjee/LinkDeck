@@ -24,6 +24,7 @@ import { ImportExportModal } from './components/import-export/ImportExportModal'
 import { AccountPickerModal } from './components/bookmarks/AccountPickerModal';
 import { PasteHandler } from './components/bookmarks/PasteHandler';
 import { StarterPackPrompt } from './components/starter/StarterPackPrompt';
+import { ConfirmDeleteModal } from './components/common/ConfirmDeleteModal';
 
 export function App() {
   // Reactive IndexedDB data
@@ -53,6 +54,9 @@ export function App() {
   const [isRoutingLabOpen, setIsRoutingLabOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+
+  // Delete All confirmation modal state
+  const [isConfirmDeleteAllOpen, setIsConfirmDeleteAllOpen] = useState(false);
 
   // Floating account picker for "Ask Every Time"
   const [pickingAccountForBookmark, setPickingAccountForBookmark] = useState<Bookmark | null>(null);
@@ -192,6 +196,11 @@ export function App() {
     setEditingProject(null);
   };
 
+  // Delete All Bookmarks
+  const handleConfirmDeleteAll = async () => {
+    await BookmarkRepository.deleteAll();
+  };
+
   // Toggle Dark/Light Theme
   const handleToggleTheme = async () => {
     const currentTheme = settings?.theme || 'dark';
@@ -233,7 +242,7 @@ export function App() {
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         {bookmarks.length === 0 ? (
-          // Empty state on fresh run
+          // Empty state on fresh run or after delete all
           <StarterPackPrompt
             onLoadStarterPack={handleLoadStarterPack}
             onImportBookmarks={() => setIsImportExportOpen(true)}
@@ -341,6 +350,7 @@ export function App() {
               onDeleteBookmark={async id => {
                 await BookmarkRepository.delete(id);
               }}
+              onDeleteAllBookmarks={() => setIsConfirmDeleteAllOpen(true)}
               onRequestAccountPick={handleRequestAccountPick}
               onOpenBookmark={handleOpenBookmark}
             />
@@ -372,6 +382,7 @@ export function App() {
         onOpenAccountManager={() => setIsAccountModalOpen(true)}
         onOpenImportExport={() => setIsImportExportOpen(true)}
         onToggleTheme={handleToggleTheme}
+        onDeleteAllBookmarks={() => setIsConfirmDeleteAllOpen(true)}
       />
 
       {/* Bookmark Create/Edit Modal */}
@@ -427,6 +438,7 @@ export function App() {
         bookmarks={bookmarks}
         collections={collections}
         onRefresh={() => {}}
+        onDeleteAllBookmarks={() => setIsConfirmDeleteAllOpen(true)}
       />
 
       {/* Floating Account Picker for "Ask Every Time" */}
@@ -436,6 +448,17 @@ export function App() {
         bookmark={pickingAccountForBookmark}
         accounts={accounts}
         onSelectAccount={handleAccountPicked}
+      />
+
+      {/* Confirm Delete All Modal */}
+      <ConfirmDeleteModal
+        isOpen={isConfirmDeleteAllOpen}
+        onClose={() => setIsConfirmDeleteAllOpen(false)}
+        onConfirm={handleConfirmDeleteAll}
+        title="Delete All Bookmarks"
+        description="Are you sure you want to delete all bookmarks? This will permanently remove all links from your local database."
+        confirmButtonText="Yes, Delete All"
+        count={bookmarks.length}
       />
 
       {/* Global Clipboard Paste Listener */}
