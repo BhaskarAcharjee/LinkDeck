@@ -4,6 +4,7 @@ import { UrlNormalizer } from '../src/services/routing/urlNormalizer.ts';
 import { NetscapeParser } from '../src/services/import-export/netscapeParser.ts';
 import { LocalSearchEngine } from '../src/services/search/searchEngine.ts';
 import { detectService } from '../src/services/routing/serviceRegistry.ts';
+import { AccountRepository } from '../src/core/repositories/AccountRepository.ts';
 
 console.log('--- RUNNING LINKDECK TEST SUITE ---');
 
@@ -214,6 +215,23 @@ const results2 = LocalSearchEngine.search('play', sampleBookmarks, projectsMap, 
 assert.strictEqual(results2.length, 1);
 assert.strictEqual(results2[0].bookmark.title, 'Play Console Listing');
 console.log('✓ Multi-Token Fuzzy Search Passed');
+
+// ==========================================
+// TEST 9: Google Account URL Auto-Detection
+// ==========================================
+console.log('[Test 9] Google Account URL Auto-Detection');
+const detectedUPath = AccountRepository.detectFromGoogleUrl('https://mail.google.com/mail/u/2/#inbox');
+assert.strictEqual(detectedUPath?.index, 2);
+
+const detectedAuthUser = AccountRepository.detectFromGoogleUrl('https://console.cloud.google.com/apis/dashboard?authuser=1&project=demo');
+assert.strictEqual(detectedAuthUser?.index, 1);
+
+const detectedChooser = AccountRepository.detectFromGoogleUrl('https://accounts.google.com/AccountChooser?Email=developer@company.com&continue=https://play.google.com');
+assert.strictEqual(detectedChooser?.email, 'developer@company.com');
+assert.strictEqual(detectedChooser?.index, 0);
+
+assert.strictEqual(AccountRepository.detectFromGoogleUrl('https://github.com/developer/repo'), null);
+console.log('✓ Google Account URL Auto-Detection Passed');
 
 console.log('\n=============================================');
 console.log('ALL LINKDECK TEST SUITES PASSED SUCCESSFULLY!');

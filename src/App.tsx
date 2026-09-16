@@ -5,6 +5,7 @@ import { db, seedInitialDataIfNeeded } from './core/db/database';
 import type { Bookmark, Project, AccountProfile, ProjectStage } from './core/types';
 import { BookmarkRepository } from './core/repositories/BookmarkRepository';
 import { ProjectRepository } from './core/repositories/ProjectRepository';
+import { AccountRepository } from './core/repositories/AccountRepository';
 import { SettingsRepository } from './core/repositories/SettingsRepository';
 import { GoogleAccountRouter } from './services/routing/GoogleAccountRouter';
 
@@ -31,7 +32,7 @@ export function App() {
   const bookmarks = useLiveQuery(() => db.bookmarks.orderBy('sortOrder').toArray()) || [];
   const projects = useLiveQuery(() => db.projects.orderBy('sortOrder').toArray()) || [];
   const collections = useLiveQuery(() => db.collections.orderBy('sortOrder').toArray()) || [];
-  const accounts = useLiveQuery(() => db.accountProfiles.toArray()) || [];
+  const accounts = useLiveQuery(() => AccountRepository.getAll()) || [];
   const settings = useLiveQuery(() => db.settings.get('current'));
 
   // Active view state

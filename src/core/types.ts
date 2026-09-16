@@ -23,6 +23,7 @@ export interface AccountProfile {
   provider: 'google' | 'custom';
   isDefault?: boolean;
   notes?: string;
+  sortOrder?: number;
   createdAt: number;
 }
 
