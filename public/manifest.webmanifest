@@ -1,0 +1,17 @@
+{
+  "name": "LinkDeck — Developer Command Center",
+  "short_name": "LinkDeck",
+  "description": "Local-First Smart Bookmark & Developer Dashboard with Google Multi-Account Routing",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080A0F",
+  "theme_color": "#080A0F",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
