@@ -126,7 +126,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               <input
                 type="text"
                 required
-                placeholder="e.g. Pencilate, FaceShape AI"
+                placeholder="e.g. Mobile App, Client Portal, SaaS Platform"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 className="w-full bg-deck-bg-elevated border border-deck-bg-border focus:border-cyan-500 rounded-lg px-3.5 py-2 text-sm text-white placeholder:text-slate-500 outline-none transition"

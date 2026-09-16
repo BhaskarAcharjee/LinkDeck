@@ -146,38 +146,46 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
     }
   ];
 
-  // 3. Initial Sample Projects
-  const defaultProjects: Project[] = [
+  if (!forceStarterPack) {
+    // Fresh run: Only seed accounts, collections, and default settings.
+    // Do NOT seed bookmarks or projects so LinkDeck opens to the clean default welcome screen.
+    await db.transaction('rw', [db.accountProfiles, db.collections, db.settings], async () => {
+      await db.accountProfiles.bulkPut(defaultAccounts);
+      await db.collections.bulkPut(defaultCollections);
+      await db.settings.put({
+        id: 'current',
+        theme: 'dark',
+        defaultGoogleAccountProfileId: 'acc_dev',
+        defaultOpenInNewTab: true,
+        showHealthBadges: true,
+        compactView: false,
+        searchIncludeNotes: true,
+        keyboardShortcutsEnabled: true,
+        starterPackLoaded: false
+      });
+    });
+    return;
+  }
+
+  // 3. Starter Sample Projects (Loaded ONLY when user clicks "Developer Starter Pack")
+  const starterProjects: Project[] = [
     {
-      id: 'proj_pencilate',
-      name: 'Pencilate',
-      slug: 'pencilate',
-      description: 'Handwriting & Sketching Note App for Android tablets',
+      id: 'proj_mobile_app',
+      name: 'Mobile App Workspace',
+      slug: 'mobile-app',
+      description: 'Android & multiplatform app developer workspace',
       color: '#06B6D4',
-      icon: 'PenTool',
+      icon: 'Smartphone',
       defaultAccountProfileId: 'acc_dev',
-      tags: ['android', 'kotlin', 'freemium'],
+      tags: ['android', 'kotlin', 'mobile'],
       sortOrder: 1,
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: 'proj_faceshape',
-      name: 'FaceShape AI',
-      slug: 'faceshape',
-      description: 'Facial analysis & hairstyle recommendation utility',
-      color: '#8B5CF6',
-      icon: 'Smile',
-      defaultAccountProfileId: 'acc_dev',
-      tags: ['android', 'ai', 'subscriptions'],
-      sortOrder: 2,
       createdAt: now,
       updatedAt: now
     }
   ];
 
-  // 4. Starter Bookmarks
-  const defaultBookmarks: Bookmark[] = [
+  // 4. Starter Bookmarks (Loaded ONLY when user clicks "Developer Starter Pack")
+  const starterBookmarks: Bookmark[] = [
     // Top Quick Launch shortcuts
     {
       id: 'bm_play_console',
@@ -299,19 +307,19 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
       linkHealth: 'healthy'
     },
 
-    // Pencilate Project Specific Links
+    // Sample Mobile App Project Specific Links
     {
-      id: 'bm_pencilate_play',
-      title: 'Pencilate — Play Console Listing',
-      url: 'https://play.google.com/console/developers/app/pencilate',
-      cleanUrl: 'https://play.google.com/console/developers/app/pencilate',
+      id: 'bm_sample_play',
+      title: 'Sample App — Play Console Listing',
+      url: 'https://play.google.com/console/developers/app/sample-app',
+      cleanUrl: 'https://play.google.com/console/developers/app/sample-app',
       domain: 'play.google.com',
       description: 'Production releases, store presence, and Android vitals',
-      projectId: 'proj_pencilate',
+      projectId: 'proj_mobile_app',
       projectStage: 'distribution',
       collectionId: 'col_android',
       accountProfileId: 'acc_dev',
-      tags: ['pencilate', 'play-store', 'releases'],
+      tags: ['sample-app', 'play-store', 'releases'],
       isFavorite: true,
       isPinned: true,
       isArchived: false,
@@ -323,17 +331,17 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
       linkHealth: 'healthy'
     },
     {
-      id: 'bm_pencilate_firebase',
-      title: 'Pencilate — Firebase Project',
-      url: 'https://console.firebase.google.com/project/pencilate-prod',
-      cleanUrl: 'https://console.firebase.google.com/project/pencilate-prod',
+      id: 'bm_sample_firebase',
+      title: 'Sample App — Firebase Project',
+      url: 'https://console.firebase.google.com/project/sample-app-prod',
+      cleanUrl: 'https://console.firebase.google.com/project/sample-app-prod',
       domain: 'console.firebase.google.com',
-      description: 'Crashlytics and Realtime DB for Pencilate',
-      projectId: 'proj_pencilate',
+      description: 'Crashlytics and Realtime DB for Sample App',
+      projectId: 'proj_mobile_app',
       projectStage: 'development',
       collectionId: 'col_cloud',
       accountProfileId: 'acc_dev',
-      tags: ['pencilate', 'firebase', 'crashlytics'],
+      tags: ['sample-app', 'firebase', 'crashlytics'],
       isFavorite: true,
       isPinned: true,
       isArchived: false,
@@ -345,16 +353,16 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
       linkHealth: 'healthy'
     },
     {
-      id: 'bm_pencilate_revcat',
-      title: 'Pencilate — RevenueCat Paywalls',
-      url: 'https://app.revenuecat.com/projects/pencilate/paywalls',
-      cleanUrl: 'https://app.revenuecat.com/projects/pencilate/paywalls',
+      id: 'bm_sample_revcat',
+      title: 'Sample App — RevenueCat Paywalls',
+      url: 'https://app.revenuecat.com/projects/sample-app/paywalls',
+      cleanUrl: 'https://app.revenuecat.com/projects/sample-app/paywalls',
       domain: 'app.revenuecat.com',
       description: 'Subscription tiers: Pro Monthly & Annual Lifetime',
-      projectId: 'proj_pencilate',
+      projectId: 'proj_mobile_app',
       projectStage: 'monetization',
       collectionId: 'col_monetization',
-      tags: ['pencilate', 'subscriptions', 'paywall'],
+      tags: ['sample-app', 'subscriptions', 'paywall'],
       isFavorite: false,
       isPinned: false,
       isArchived: false,
@@ -366,16 +374,16 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
       linkHealth: 'healthy'
     },
     {
-      id: 'bm_pencilate_github',
-      title: 'Pencilate — GitHub Repository',
-      url: 'https://github.com/developer/pencilate-android',
-      cleanUrl: 'https://github.com/developer/pencilate-android',
+      id: 'bm_sample_github',
+      title: 'Sample App — GitHub Repository',
+      url: 'https://github.com/developer/sample-app-android',
+      cleanUrl: 'https://github.com/developer/sample-app-android',
       domain: 'github.com',
       description: 'Jetpack Compose & Kotlin source code',
-      projectId: 'proj_pencilate',
+      projectId: 'proj_mobile_app',
       projectStage: 'development',
       collectionId: 'col_dev',
-      tags: ['pencilate', 'android', 'compose', 'kotlin'],
+      tags: ['sample-app', 'android', 'compose', 'kotlin'],
       isFavorite: false,
       isPinned: false,
       isArchived: false,
@@ -387,17 +395,17 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
       linkHealth: 'healthy'
     },
     {
-      id: 'bm_pencilate_analytics',
-      title: 'Pencilate — Google Analytics',
+      id: 'bm_sample_analytics',
+      title: 'Sample App — Google Analytics',
       url: 'https://analytics.google.com/analytics/web/#/p123456789',
       cleanUrl: 'https://analytics.google.com/analytics/web/#/p123456789',
       domain: 'analytics.google.com',
       description: 'User engagement, retention curves, daily actives',
-      projectId: 'proj_pencilate',
+      projectId: 'proj_mobile_app',
       projectStage: 'analytics',
       collectionId: 'col_analytics',
       accountProfileId: 'acc_dev',
-      tags: ['pencilate', 'analytics', 'engagement'],
+      tags: ['sample-app', 'analytics', 'engagement'],
       isFavorite: false,
       isPinned: false,
       isArchived: false,
@@ -409,16 +417,16 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
       linkHealth: 'healthy'
     },
     {
-      id: 'bm_pencilate_privacy',
-      title: 'Pencilate — Privacy Policy & Terms',
-      url: 'https://pencilate.app/privacy',
-      cleanUrl: 'https://pencilate.app/privacy',
-      domain: 'pencilate.app',
+      id: 'bm_sample_privacy',
+      title: 'Sample App — Privacy Policy & Terms',
+      url: 'https://sample-app.example.com/privacy',
+      cleanUrl: 'https://sample-app.example.com/privacy',
+      domain: 'sample-app.example.com',
       description: 'Public Google Play required compliance document',
-      projectId: 'proj_pencilate',
+      projectId: 'proj_mobile_app',
       projectStage: 'web',
       collectionId: 'col_android',
-      tags: ['pencilate', 'compliance', 'legal', 'privacy'],
+      tags: ['sample-app', 'compliance', 'legal', 'privacy'],
       isFavorite: false,
       isPinned: false,
       isArchived: false,
@@ -441,8 +449,8 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
 
     await db.accountProfiles.bulkPut(defaultAccounts);
     await db.collections.bulkPut(defaultCollections);
-    await db.projects.bulkPut(defaultProjects);
-    await db.bookmarks.bulkPut(defaultBookmarks);
+    await db.projects.bulkPut(starterProjects);
+    await db.bookmarks.bulkPut(starterBookmarks);
 
     await db.settings.put({
       id: 'current',

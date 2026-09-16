@@ -21,16 +21,16 @@ interface AccountRoutingLabProps {
 
 const PRESET_TEST_URLS = [
   { name: 'Google Play Console', url: 'https://play.google.com/console' },
-  { name: 'Play Console App Page', url: 'https://play.google.com/console/developers/app/pencilate' },
-  { name: 'Firebase Console', url: 'https://console.firebase.google.com/project/pencilate-prod' },
+  { name: 'Play Console App Page', url: 'https://play.google.com/console/developers/app/sample-app' },
+  { name: 'Firebase Console', url: 'https://console.firebase.google.com/project/sample-app-prod' },
   { name: 'Google Cloud Console', url: 'https://console.cloud.google.com/apis/dashboard' },
   { name: 'Google AdMob', url: 'https://admob.google.com/home' },
   { name: 'Google Analytics 4', url: 'https://analytics.google.com/analytics/web/#/p123456789' },
   { name: 'Search Console', url: 'https://search.google.com/search-console' },
   { name: 'Gmail', url: 'https://mail.google.com/mail' },
   { name: 'Google Drive', url: 'https://drive.google.com/drive' },
-  { name: 'Non-Google: RevenueCat', url: 'https://app.revenuecat.com/projects/pencilate' },
-  { name: 'Non-Google: GitHub', url: 'https://github.com/developer/pencilate' }
+  { name: 'Non-Google: RevenueCat', url: 'https://app.revenuecat.com/projects/sample-app' },
+  { name: 'Non-Google: GitHub', url: 'https://github.com/developer/sample-app' }
 ];
 
 export const AccountRoutingLab: React.FC<AccountRoutingLabProps> = ({

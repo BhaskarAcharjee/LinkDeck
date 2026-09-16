@@ -42,7 +42,7 @@ export const StarterPackPrompt: React.FC<StarterPackPromptProps> = ({
               Developer Starter Pack
             </span>
             <span className="text-[11px] text-slate-400 leading-snug block mt-0.5">
-              Play Console, Firebase, AdMob, Cloud, & Pencilate project
+              Play Console, Firebase, AdMob, Cloud, & sample app workspace
             </span>
           </div>
         </button>

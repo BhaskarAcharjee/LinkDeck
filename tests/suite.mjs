@@ -62,17 +62,17 @@ const playDev = GoogleAccountRouter.resolve('https://play.google.com/console', d
 assert.strictEqual(playDev.strategyApplied, 'GOOGLE_U_PATH');
 assert.ok(playDev.resolvedUrl.includes('/console/u/1'), `Expected /console/u/1, got: ${playDev.resolvedUrl}`);
 
-const playWorkApp = GoogleAccountRouter.resolve('https://play.google.com/console/developers/app/pencilate', workAccount);
-assert.ok(playWorkApp.resolvedUrl.includes('/console/u/2/developers/app/pencilate'), `Expected /console/u/2/..., got: ${playWorkApp.resolvedUrl}`);
+const playWorkApp = GoogleAccountRouter.resolve('https://play.google.com/console/developers/app/sample-app', workAccount);
+assert.ok(playWorkApp.resolvedUrl.includes('/console/u/2/developers/app/sample-app'), `Expected /console/u/2/..., got: ${playWorkApp.resolvedUrl}`);
 console.log('✓ Google Play Console Routing Passed');
 
 // ==========================================
 // TEST 3: Firebase Console Routing (GOOGLE_U_PATH)
 // ==========================================
 console.log('[Test 3] Firebase Console URL Routing');
-const firebaseDev = GoogleAccountRouter.resolve('https://console.firebase.google.com/project/pencilate-prod', devAccount);
+const firebaseDev = GoogleAccountRouter.resolve('https://console.firebase.google.com/project/sample-app-prod', devAccount);
 assert.strictEqual(firebaseDev.strategyApplied, 'GOOGLE_U_PATH');
-assert.ok(firebaseDev.resolvedUrl.includes('/u/1/project/pencilate-prod'), `Expected /u/1/project/pencilate-prod, got: ${firebaseDev.resolvedUrl}`);
+assert.ok(firebaseDev.resolvedUrl.includes('/u/1/project/sample-app-prod'), `Expected /u/1/project/sample-app-prod, got: ${firebaseDev.resolvedUrl}`);
 console.log('✓ Firebase Console Routing Passed');
 
 // ==========================================
@@ -92,13 +92,13 @@ console.log('✓ Google Cloud & AdMob Routing Passed');
 // TEST 5: Non-Google Direct Routing
 // ==========================================
 console.log('[Test 5] Non-Google Direct Routing');
-const revCat = GoogleAccountRouter.resolve('https://app.revenuecat.com/projects/pencilate', devAccount);
+const revCat = GoogleAccountRouter.resolve('https://app.revenuecat.com/projects/sample-app', devAccount);
 assert.strictEqual(revCat.strategyApplied, 'DIRECT');
-assert.strictEqual(revCat.resolvedUrl, 'https://app.revenuecat.com/projects/pencilate');
+assert.strictEqual(revCat.resolvedUrl, 'https://app.revenuecat.com/projects/sample-app');
 
-const github = GoogleAccountRouter.resolve('https://github.com/developer/pencilate', devAccount);
+const github = GoogleAccountRouter.resolve('https://github.com/developer/sample-app', devAccount);
 assert.strictEqual(github.strategyApplied, 'DIRECT');
-assert.strictEqual(github.resolvedUrl, 'https://github.com/developer/pencilate');
+assert.strictEqual(github.resolvedUrl, 'https://github.com/developer/sample-app');
 console.log('✓ Non-Google Direct Routing Passed');
 
 // ==========================================
@@ -201,11 +201,11 @@ const sampleBookmarks = [
 ];
 
 const projectsMap = new Map([
-  ['p1', { id: 'p1', name: 'Pencilate', slug: 'pencilate', color: '#06B6D4', tags: ['android'], sortOrder: 1, createdAt: 1000, updatedAt: 1000 }]
+  ['p1', { id: 'p1', name: 'Sample App', slug: 'sample-app', color: '#06B6D4', tags: ['android'], sortOrder: 1, createdAt: 1000, updatedAt: 1000 }]
 ]);
 
-// Test multi-token query: "firebase pencilate"
-const results1 = LocalSearchEngine.search('firebase pencilate', sampleBookmarks, projectsMap, new Map(), new Map());
+// Test multi-token query: "firebase sample-app"
+const results1 = LocalSearchEngine.search('firebase sample-app', sampleBookmarks, projectsMap, new Map(), new Map());
 assert.strictEqual(results1.length, 1);
 assert.strictEqual(results1[0].bookmark.title, 'Firebase Crashlytics');
 

@@ -50,6 +50,7 @@ export class LocalSearchEngine {
       const descLower = (b.description || '').toLowerCase();
       const tagsLower = b.tags.map(t => t.toLowerCase());
       const projNameLower = project?.name.toLowerCase() || '';
+      const projSlugLower = project?.slug?.toLowerCase() || '';
       const colNameLower = collection?.name.toLowerCase() || '';
       const accNameLower = account?.name.toLowerCase() || '';
 
@@ -68,7 +69,7 @@ export class LocalSearchEngine {
           if (!matchedFields.includes('title')) matchedFields.push('title');
         }
 
-        if (projNameLower.includes(token)) {
+        if (projNameLower.includes(token) || projSlugLower.includes(token)) {
           tokenMatched = true;
           score += 14;
           if (!matchedFields.includes('project')) matchedFields.push('project');
