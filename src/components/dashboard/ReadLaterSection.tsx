@@ -7,12 +7,14 @@ interface ReadLaterSectionProps {
   articles: Article[];
   onOpenArticle: (article: Article) => void;
   onViewAllArticles: () => void;
+  onContextMenu?: (e: React.MouseEvent, article: Article) => void;
 }
 
 export const ReadLaterSection: React.FC<ReadLaterSectionProps> = ({
   articles,
   onOpenArticle,
-  onViewAllArticles
+  onViewAllArticles,
+  onContextMenu
 }) => {
   const unreadArticles = articles.filter(a => a.readingStatus === 'unread' || a.readingStatus === 'reading').slice(0, 4);
 
@@ -52,6 +54,13 @@ export const ReadLaterSection: React.FC<ReadLaterSectionProps> = ({
           <div
             key={art.id}
             onClick={() => onOpenArticle(art)}
+            onContextMenu={e => {
+              if (onContextMenu) {
+                e.preventDefault();
+                e.stopPropagation();
+                onContextMenu(e, art);
+              }
+            }}
             className="group relative flex flex-col justify-between p-3.5 rounded-xl bg-deck-elevated/70 hover:bg-deck-elevated border border-deck-border/60 hover:border-emerald-500/40 transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
           >
             <div>

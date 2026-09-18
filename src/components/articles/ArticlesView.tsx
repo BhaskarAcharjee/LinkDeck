@@ -19,12 +19,14 @@ interface ArticlesViewProps {
   onOpenArticle: (article: Article) => void;
   onNewArticle: () => void;
   onBackToDashboard: () => void;
+  onContextMenu?: (e: React.MouseEvent, article: Article) => void;
 }
 
 export const ArticlesView: React.FC<ArticlesViewProps> = ({
   articles,
   onOpenArticle,
-  onNewArticle
+  onNewArticle,
+  onContextMenu
 }) => {
   const [activeStatus, setActiveStatus] = useState<ReadingStatus | 'all'>('unread');
   const [searchQuery, setSearchQuery] = useState('');
@@ -108,6 +110,21 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
               <button
                 key={tab}
                 onClick={() => setActiveStatus(tab)}
+                onDragOver={e => {
+                  if (tab !== 'all') {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }
+                }}
+                onDrop={async e => {
+                  if (tab !== 'all') {
+                    e.preventDefault();
+                    const articleId = e.dataTransfer.getData('text/plain');
+                    if (articleId) {
+                      await ArticleRepository.setStatus(articleId, tab);
+                    }
+                  }
+                }}
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg capitalize transition-all shrink-0 ${
                   isActive
                     ? 'bg-deck-accent text-white font-semibold shadow-sm'
@@ -177,6 +194,18 @@ export const ArticlesView: React.FC<ArticlesViewProps> = ({
           {filteredArticles.map(art => (
             <div
               key={art.id}
+              draggable
+              onDragStart={e => {
+                e.dataTransfer.setData('text/plain', art.id);
+                e.dataTransfer.setData('application/json', JSON.stringify({ type: 'article', id: art.id }));
+              }}
+              onContextMenu={e => {
+                if (onContextMenu) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onContextMenu(e, art);
+                }
+              }}
               onClick={() => onOpenArticle(art)}
               className="group relative flex flex-col justify-between p-4 rounded-2xl bg-deck-card/80 hover:bg-deck-card border border-deck-border/60 hover:border-deck-accent/50 shadow-md transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
             >

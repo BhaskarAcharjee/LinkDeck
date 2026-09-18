@@ -24,6 +24,9 @@ interface BookmarkCardProps {
   collection?: Collection;
   account?: AccountProfile;
   accounts: AccountProfile[];
+  isSelected?: boolean;
+  onToggleSelect?: (bookmarkId: string) => void;
+  onContextMenu?: (e: React.MouseEvent, bookmark: Bookmark) => void;
   onEdit: (bookmark: Bookmark) => void;
   onDelete: (bookmarkId: string) => void;
   onRequestAccountPick: (bookmark: Bookmark) => void;
@@ -35,6 +38,10 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
   project,
   collection,
   account,
+  accounts: _accounts,
+  isSelected,
+  onToggleSelect,
+  onContextMenu,
   onEdit,
   onDelete,
   onRequestAccountPick,
@@ -94,13 +101,44 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
 
   return (
     <div
+      draggable
+      onDragStart={e => {
+        e.dataTransfer.setData('text/plain', bookmark.id);
+        e.dataTransfer.setData('application/json', JSON.stringify({ type: 'bookmark', id: bookmark.id }));
+      }}
+      onContextMenu={e => {
+        if (onContextMenu) {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e, bookmark);
+        }
+      }}
       onClick={handleLaunch}
-      className="group relative bg-deck-bg-card hover:bg-deck-bg-hover/80 border border-deck-bg-border hover:border-cyan-500/40 rounded-xl p-4 transition-all duration-200 cursor-pointer shadow-card hover:shadow-card-hover hover:-translate-y-0.5 flex flex-col justify-between"
+      className={`group relative bg-deck-bg-card hover:bg-deck-bg-hover/80 border ${
+        isSelected
+          ? 'border-cyan-500 ring-1 ring-cyan-500/50 bg-cyan-950/10'
+          : 'border-deck-bg-border hover:border-cyan-500/40'
+      } rounded-xl p-4 transition-all duration-200 cursor-pointer shadow-card hover:shadow-card-hover hover:-translate-y-0.5 flex flex-col justify-between`}
     >
       {/* Top row: Favicon, Account badge, Quick launch button */}
       <div>
         <div className="flex items-start justify-between gap-2 mb-2.5">
           <div className="flex items-center gap-2.5">
+            {onToggleSelect && (
+              <input
+                type="checkbox"
+                checked={isSelected || false}
+                onChange={e => {
+                  e.stopPropagation();
+                  onToggleSelect(bookmark.id);
+                }}
+                onClick={e => e.stopPropagation()}
+                className={`w-3.5 h-3.5 rounded border-slate-600 text-cyan-500 focus:ring-0 cursor-pointer ${
+                  isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                } transition-opacity`}
+              />
+            )}
+
             <div className="w-8 h-8 rounded-lg bg-deck-bg-elevated border border-deck-bg-border flex items-center justify-center p-1 shadow-inner group-hover:border-cyan-500/30 transition">
               <ServiceIcon url={bookmark.url} customFavicon={bookmark.favicon} size={20} />
             </div>
@@ -134,7 +172,14 @@ export const BookmarkCard: React.FC<BookmarkCardProps> = ({
             {/* Context menu trigger */}
             <div className="relative" ref={menuRef}>
               <button
-                onClick={() => setMenuOpen(!menuOpen)}
+                onClick={e => {
+                  if (onContextMenu) {
+                    e.preventDefault();
+                    onContextMenu(e, bookmark);
+                  } else {
+                    setMenuOpen(!menuOpen);
+                  }
+                }}
                 className="p-1 rounded text-slate-400 hover:text-white hover:bg-deck-bg-elevated transition opacity-0 group-hover:opacity-100"
               >
                 <MoreVertical size={14} />

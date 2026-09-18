@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Personal bookmark imports
+src/assets/bookmarks_*.html
+src/assets/bookmarks_9_16_26.html

@@ -1,4 +1,4 @@
-import type { Bookmark, Collection, QuickSiteCategory } from '../../core/types';
+import type { Bookmark, Collection, QuickSiteCategory, ProjectStage, ReadingStatus } from '../../core/types';
 import { detectService } from '../routing/serviceRegistry';
 
 export interface ParsedBookmarkItem {
@@ -11,6 +11,13 @@ export interface ParsedBookmarkItem {
   suggestedType: 'quick_site' | 'bookmark' | 'article';
   serviceId?: string;
   category?: QuickSiteCategory;
+  collectionName?: string;
+  projectName?: string;
+  projectStage?: ProjectStage;
+  readingStatus?: ReadingStatus;
+  estimatedReadingTime?: number;
+  googleAuthUser?: number;
+  linkDeckAccount?: string;
 }
 
 export class NetscapeParser {
@@ -147,6 +154,16 @@ export class NetscapeParser {
 
                   const classification = NetscapeParser.classifyItem(href, rawTitle, folderHierarchy);
 
+                  // Extract LinkDeck custom attributes if present
+                  const linkdeckType = (a.getAttribute('data-linkdeck-type') as any) || classification.suggestedType;
+                  const collectionName = a.getAttribute('data-linkdeck-collection') || (folderHierarchy[folderHierarchy.length - 1] || undefined);
+                  const projectName = a.getAttribute('data-linkdeck-project') || undefined;
+                  const projectStage = (a.getAttribute('data-linkdeck-stage') as any) || undefined;
+                  const readingStatus = (a.getAttribute('data-linkdeck-read-state') as any) || (linkdeckType === 'article' ? 'unread' : undefined);
+                  const estimatedReadingTime = a.getAttribute('data-linkdeck-read-time') ? parseInt(a.getAttribute('data-linkdeck-read-time')!, 10) : undefined;
+                  const googleAuthUser = a.getAttribute('data-linkdeck-authuser') ? parseInt(a.getAttribute('data-linkdeck-authuser')!, 10) : undefined;
+                  const linkDeckAccount = a.getAttribute('data-linkdeck-account') || undefined;
+
                   results.push({
                     title: classification.title,
                     url: href,
@@ -154,9 +171,16 @@ export class NetscapeParser {
                     folderPath: [...folderHierarchy],
                     addDate,
                     icon,
-                    suggestedType: classification.suggestedType,
+                    suggestedType: linkdeckType,
                     serviceId: classification.serviceId,
-                    category: classification.category
+                    category: classification.category,
+                    collectionName,
+                    projectName,
+                    projectStage,
+                    readingStatus,
+                    estimatedReadingTime,
+                    googleAuthUser,
+                    linkDeckAccount
                   });
                 }
               }
@@ -181,6 +205,15 @@ export class NetscapeParser {
       }
     }
 
+    function decodeHtmlEntities(text: string): string {
+      return text
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+    }
+
     // Robust Regex parser for Netscape HTML format
     const results: ParsedBookmarkItem[] = [];
     const lines = htmlContent.split(/\r?\n/);
@@ -192,7 +225,7 @@ export class NetscapeParser {
       // Check for folder header <H3 ...>FolderName</H3>
       const h3Match = trimmed.match(/<H3[^>]*>(.*?)<\/H3>/i);
       if (h3Match) {
-        const folderName = h3Match[1].replace(/<[^>]*>/g, '').trim();
+        const folderName = decodeHtmlEntities(h3Match[1].replace(/<[^>]*>/g, '').trim());
         folderStack.push(folderName);
         continue;
       }
@@ -204,20 +237,54 @@ export class NetscapeParser {
       }
 
       // Check for link <A HREF="url" ...>Title</A>
-      const aMatch = trimmed.match(/<A\s+[^>]*HREF=["']([^"']+)["'][^>]*>(.*?)<\/A>/i);
+      const aMatch = trimmed.match(/<A\s+([^>]*HREF=["']([^"']+)["'][^>]*)>(.*?)<\/A>/i);
       if (aMatch) {
-        const href = aMatch[1];
-        const rawTitle = aMatch[2].replace(/<[^>]*>/g, '').trim();
+        const attrs = aMatch[1];
+        const href = decodeHtmlEntities(aMatch[2]);
+        const rawTitle = decodeHtmlEntities(aMatch[3].replace(/<[^>]*>/g, '').trim());
+
         if (href.startsWith('http://') || href.startsWith('https://')) {
           const classification = NetscapeParser.classifyItem(href, rawTitle, folderStack);
+
+          const typeMatch = attrs.match(/data-linkdeck-type=["']([^"']+)["']/i);
+          const linkdeckType = (typeMatch ? typeMatch[1] : classification.suggestedType) as any;
+
+          const colMatch = attrs.match(/data-linkdeck-collection=["']([^"']+)["']/i);
+          const collectionName = colMatch ? decodeHtmlEntities(colMatch[1]) : (folderStack[folderStack.length - 1] || undefined);
+
+          const projMatch = attrs.match(/data-linkdeck-project=["']([^"']+)["']/i);
+          const projectName = projMatch ? decodeHtmlEntities(projMatch[1]) : undefined;
+
+          const stageMatch = attrs.match(/data-linkdeck-stage=["']([^"']+)["']/i);
+          const projectStage = stageMatch ? (stageMatch[1] as any) : undefined;
+
+          const readMatch = attrs.match(/data-linkdeck-read-state=["']([^"']+)["']/i);
+          const readingStatus = readMatch ? (readMatch[1] as any) : (linkdeckType === 'article' ? 'unread' : undefined);
+
+          const timeMatch = attrs.match(/data-linkdeck-read-time=["']([^"']+)["']/i);
+          const estimatedReadingTime = timeMatch ? parseInt(timeMatch[1], 10) : undefined;
+
+          const authMatch = attrs.match(/data-linkdeck-authuser=["']([^"']+)["']/i);
+          const googleAuthUser = authMatch ? parseInt(authMatch[1], 10) : undefined;
+
+          const accMatch = attrs.match(/data-linkdeck-account=["']([^"']+)["']/i);
+          const linkDeckAccount = accMatch ? accMatch[1] : undefined;
+
           results.push({
             title: classification.title,
             url: href,
             domain: classification.domain,
             folderPath: [...folderStack],
-            suggestedType: classification.suggestedType,
+            suggestedType: linkdeckType,
             serviceId: classification.serviceId,
-            category: classification.category
+            category: classification.category,
+            collectionName,
+            projectName,
+            projectStage,
+            readingStatus,
+            estimatedReadingTime,
+            googleAuthUser,
+            linkDeckAccount
           });
         }
       }

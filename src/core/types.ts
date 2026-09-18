@@ -72,6 +72,7 @@ export interface Collection {
   slug: string;
   icon?: string;
   color?: string;
+  description?: string;
   parentId?: string;
   isSystem?: boolean;
   sortOrder: number;
@@ -176,5 +177,12 @@ export interface DuplicateCheckResult {
   matchType?: 'exact_url' | 'normalized_url' | 'domain_title';
   existingBookmark?: Bookmark;
   similarityScore?: number;
+}
+
+export interface UndoAction {
+  id: string;
+  description: string;
+  executeUndo: () => Promise<void>;
+  timestamp: number;
 }
 

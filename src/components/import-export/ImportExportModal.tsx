@@ -7,21 +7,29 @@ import {
   FileCode,
   FileJson,
   CheckCircle2,
-  AlertTriangle,
-  Trash2
+  Zap,
+  BookOpen,
+  Folder,
+  Briefcase,
+  Layers,
+  Copy
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { db } from '../../core/db/database';
 import type { Bookmark, Collection, QuickSite, Article } from '../../core/types';
 import { NetscapeParser, type ParsedBookmarkItem } from '../../services/import-export/netscapeParser';
-import { BackupManager } from '../../services/import-export/backupManager';
+import { BackupManager, type LinkDeckBackupData } from '../../services/import-export/backupManager';
 import { BookmarkRepository } from '../../core/repositories/BookmarkRepository';
 import { QuickSiteRepository } from '../../core/repositories/QuickSiteRepository';
 import { ArticleRepository } from '../../core/repositories/ArticleRepository';
 import { CollectionRepository } from '../../core/repositories/CollectionRepository';
+import { ProjectRepository } from '../../core/repositories/ProjectRepository';
 import { UrlNormalizer } from '../../services/routing/urlNormalizer';
 
 interface ImportItemWithSelection extends ParsedBookmarkItem {
   selectedType: 'quick_site' | 'bookmark' | 'article' | 'skip';
+  isDuplicate?: boolean;
+  isUncertain?: boolean;
 }
 
 interface ImportExportModalProps {
@@ -38,18 +46,26 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   onClose,
   bookmarks,
   collections,
-  onRefresh,
-  onDeleteAllBookmarks
+  onRefresh
 }) => {
   const [activeTab, setActiveTab] = useState<'import' | 'export'>('import');
   const [parsedItems, setParsedItems] = useState<ImportItemWithSelection[]>([]);
-  const [classificationFilter, setClassificationFilter] = useState<'all' | 'quick_site' | 'bookmark' | 'article'>('all');
-  const [fileName, setFileName] = useState<string>('');
+  const [jsonBackupData, setJsonBackupData] = useState<LinkDeckBackupData | null>(null);
   const [isJsonBackup, setIsJsonBackup] = useState(false);
-  const [jsonRaw, setJsonRaw] = useState<string>('');
-  const [duplicateCount, setDuplicateCount] = useState(0);
+  const [fileName, setFileName] = useState<string>('');
   const [importing, setImporting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Inspection sub-tab
+  const [inspectTab, setInspectTab] = useState<'all' | 'quick_site' | 'article' | 'collections' | 'projects' | 'duplicates' | 'uncertain'>('all');
+
+  // Advanced options
+  const [includeQuickSites, setIncludeQuickSites] = useState(true);
+  const [includeBookmarks, setIncludeBookmarks] = useState(true);
+  const [includeArticles, setIncludeArticles] = useState(true);
+  const [includeProjects, setIncludeProjects] = useState(true);
+  const [includeCollections, setIncludeCollections] = useState(true);
+  const [duplicateHandling, setDuplicateHandling] = useState<'skip' | 'merge' | 'keep'>('skip');
 
   if (!isOpen) return null;
 
@@ -67,66 +83,168 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
       if (file.name.endsWith('.json')) {
         setIsJsonBackup(true);
-        setJsonRaw(content);
         try {
-          const parsed = JSON.parse(content);
-          setParsedItems(
-            (parsed.bookmarks || []).map((b: Bookmark) => ({
-              title: b.title,
-              url: b.url,
-              domain: b.domain,
-              folderPath: [],
-              suggestedType: 'bookmark' as const,
-              selectedType: 'bookmark' as const
-            }))
-          );
+          const parsed: LinkDeckBackupData = JSON.parse(content);
+          setJsonBackupData(parsed);
+
+          const items: ImportItemWithSelection[] = [];
+          (parsed.quickSites || []).forEach(qs => {
+            items.push({
+              title: qs.title,
+              url: qs.url,
+              domain: qs.domain,
+              folderPath: ['Quick Links'],
+              suggestedType: 'quick_site',
+              selectedType: 'quick_site',
+              category: qs.category
+            });
+          });
+          (parsed.articles || []).forEach(art => {
+            items.push({
+              title: art.title,
+              url: art.url,
+              domain: art.domain,
+              folderPath: ['Articles & Read Later'],
+              suggestedType: 'article',
+              selectedType: 'article',
+              readingStatus: art.readingStatus,
+              estimatedReadingTime: art.estimatedReadingTime
+            });
+          });
+          (parsed.bookmarks || []).forEach(bm => {
+            const isDupe = bookmarks.some(b => b.cleanUrl === bm.cleanUrl);
+            items.push({
+              title: bm.title,
+              url: bm.url,
+              domain: bm.domain,
+              folderPath: bm.collectionId ? ['Bookmarks'] : [],
+              suggestedType: 'bookmark',
+              selectedType: 'bookmark',
+              isDuplicate: isDupe
+            });
+          });
+
+          setParsedItems(items);
         } catch {
           alert('Invalid JSON file format.');
         }
       } else {
-        // Standard HTML bookmark export
+        // Netscape HTML
         setIsJsonBackup(false);
+        setJsonBackupData(null);
         const items = NetscapeParser.parse(content);
-        const enrichedItems: ImportItemWithSelection[] = items.map(item => ({
-          ...item,
-          selectedType: item.suggestedType
-        }));
-        setParsedItems(enrichedItems);
-
-        // Check duplicate count against current database
         const existingCleanUrls = new Set(bookmarks.map(b => b.cleanUrl));
-        const dupes = items.filter(i => existingCleanUrls.has(UrlNormalizer.clean(i.url)));
-        setDuplicateCount(dupes.length);
+
+        const enrichedItems: ImportItemWithSelection[] = items.map(item => {
+          const clean = UrlNormalizer.clean(item.url);
+          const isDupe = existingCleanUrls.has(clean);
+          const isUncertain = !item.serviceId && item.folderPath.length === 0;
+
+          return {
+            ...item,
+            selectedType: item.suggestedType,
+            isDuplicate: isDupe,
+            isUncertain
+          };
+        });
+
+        setParsedItems(enrichedItems);
       }
     };
     reader.readAsText(file);
   };
 
-  const handleItemTypeChange = (index: number, newType: 'quick_site' | 'bookmark' | 'article' | 'skip') => {
-    setParsedItems(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], selectedType: newType };
-      return updated;
-    });
-  };
+  // Metric counts
+  const quickLinksCount = isJsonBackup && jsonBackupData?.quickSites
+    ? jsonBackupData.quickSites.length
+    : parsedItems.filter(i => i.selectedType === 'quick_site').length;
 
-  const handleExecuteImport = async () => {
-    if (parsedItems.length === 0) return;
+  const articlesCount = isJsonBackup && jsonBackupData?.articles
+    ? jsonBackupData.articles.length
+    : parsedItems.filter(i => i.selectedType === 'article').length;
+
+  const bookmarksCount = isJsonBackup && jsonBackupData?.bookmarks
+    ? jsonBackupData.bookmarks.length
+    : parsedItems.filter(i => i.selectedType === 'bookmark').length;
+
+  const projectsCount = isJsonBackup && jsonBackupData?.projects
+    ? jsonBackupData.projects.length
+    : Array.from(new Set(parsedItems.filter(i => i.projectName).map(i => i.projectName))).length;
+
+  const collectionsCount = isJsonBackup && jsonBackupData?.collections
+    ? jsonBackupData.collections.length
+    : Array.from(new Set(parsedItems.filter(i => i.collectionName).map(i => i.collectionName))).length;
+
+  const duplicatesCount = parsedItems.filter(i => i.isDuplicate).length;
+  const uncertainCount = parsedItems.filter(i => i.isUncertain).length;
+
+  // Filtered items for inspection
+  const displayedItems = parsedItems.filter(i => {
+    if (inspectTab === 'quick_site') return i.selectedType === 'quick_site';
+    if (inspectTab === 'article') return i.selectedType === 'article';
+    if (inspectTab === 'duplicates') return i.isDuplicate;
+    if (inspectTab === 'uncertain') return i.isUncertain;
+    if (inspectTab === 'projects') return !!i.projectName;
+    if (inspectTab === 'collections') return !!i.collectionName && i.selectedType === 'bookmark';
+    return true;
+  });
+
+  const handleExecuteImport = async (importAll = false) => {
+    if (parsedItems.length === 0 && !jsonBackupData) return;
     setImporting(true);
 
     try {
-      if (isJsonBackup) {
-        await BackupManager.importBackup(jsonRaw, 'merge');
+      if (isJsonBackup && jsonBackupData) {
+        // Native LinkDeck Backup import
+        if (importAll) {
+          await BackupManager.importBackup(JSON.stringify(jsonBackupData), 'merge');
+        } else {
+          // Selective import based on checkboxes
+          await db.transaction(
+            'rw',
+            [db.bookmarks, db.projects, db.collections, db.quickSites, db.articles],
+            async () => {
+              if (includeQuickSites && jsonBackupData.quickSites?.length) {
+                await db.quickSites.bulkPut(jsonBackupData.quickSites);
+              }
+              if (includeArticles && jsonBackupData.articles?.length) {
+                await db.articles.bulkPut(jsonBackupData.articles);
+              }
+              if (includeProjects && jsonBackupData.projects?.length) {
+                await db.projects.bulkPut(jsonBackupData.projects);
+              }
+              if (includeCollections && jsonBackupData.collections?.length) {
+                await db.collections.bulkPut(jsonBackupData.collections);
+              }
+              if (includeBookmarks && jsonBackupData.bookmarks?.length) {
+                let toImport = jsonBackupData.bookmarks;
+                if (duplicateHandling === 'skip') {
+                  const existing = new Set(bookmarks.map(b => b.cleanUrl));
+                  toImport = toImport.filter(b => !existing.has(b.cleanUrl));
+                }
+                await db.bookmarks.bulkPut(toImport);
+              }
+            }
+          );
+        }
       } else {
+        // HTML Import
+        const now = Date.now();
         const collectionMap = new Map<string, string>();
         for (const col of collections) {
           collectionMap.set(col.name.toLowerCase(), col.id);
         }
 
+        const projectMap = new Map<string, string>();
+        const existingProjects = await ProjectRepository.getAll();
+        for (const proj of existingProjects) {
+          projectMap.set(proj.name.toLowerCase(), proj.id);
+        }
+
         const newBookmarks: Bookmark[] = [];
         const newQuickSites: QuickSite[] = [];
         const newArticles: Article[] = [];
-        const now = Date.now();
+        const existingCleanUrls = new Set(bookmarks.map(b => b.cleanUrl));
 
         for (let i = 0; i < parsedItems.length; i++) {
           const item = parsedItems[i];
@@ -135,7 +253,13 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
           const clean = UrlNormalizer.clean(item.url);
           const domain = item.domain || UrlNormalizer.getDomain(item.url);
 
+          // Check duplicate mode
+          if (existingCleanUrls.has(clean)) {
+            if (duplicateHandling === 'skip') continue;
+          }
+
           if (item.selectedType === 'quick_site') {
+            if (!includeQuickSites && !importAll) continue;
             newQuickSites.push({
               id: 'qs_imp_' + Math.random().toString(36).substring(2, 9) + '_' + (now + i),
               serviceId: item.serviceId,
@@ -143,7 +267,9 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               url: item.url,
               cleanUrl: clean,
               domain,
+              icon: item.icon,
               category: item.category || 'utilities',
+              accountProfileId: item.googleAuthUser !== undefined ? (item.googleAuthUser === 1 ? 'acc_dev' : item.googleAuthUser === 2 ? 'acc_work' : 'acc_personal') : undefined,
               isPinned: false,
               isHidden: false,
               openCount: 0,
@@ -152,6 +278,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               updatedAt: now
             });
           } else if (item.selectedType === 'article') {
+            if (!includeArticles && !importAll) continue;
             newArticles.push({
               id: 'art_imp_' + Math.random().toString(36).substring(2, 9) + '_' + (now + i),
               title: item.title,
@@ -159,28 +286,51 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               cleanUrl: clean,
               domain,
               source: domain,
+              favicon: item.icon,
               tags: item.folderPath.map(f => f.toLowerCase().replace(/\s+/g, '-')),
-              readingStatus: 'unread',
+              readingStatus: item.readingStatus || 'unread',
               isFavorite: false,
-              estimatedReadingTime: ArticleRepository.estimateReadingTime(item.title),
+              estimatedReadingTime: item.estimatedReadingTime || ArticleRepository.estimateReadingTime(item.title),
               savedAt: item.addDate || now,
               updatedAt: now
             });
           } else {
             // Bookmark
-            let colId: string | undefined = undefined;
-            if (item.folderPath.length > 0) {
-              const folderName = item.folderPath[item.folderPath.length - 1];
-              const lowerFolder = folderName.toLowerCase();
-              if (collectionMap.has(lowerFolder)) {
-                colId = collectionMap.get(lowerFolder);
+            if (!includeBookmarks && !importAll) continue;
+
+            // Project resolution
+            let projId: string | undefined;
+            if (item.projectName && (includeProjects || importAll)) {
+              const lowerProj = item.projectName.toLowerCase();
+              if (projectMap.has(lowerProj)) {
+                projId = projectMap.get(lowerProj);
+              } else {
+                const newProj = await ProjectRepository.create({
+                  name: item.projectName,
+                  slug: item.projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                  color: '#06B6D4',
+                  sortOrder: existingProjects.length + 1,
+                  tags: [item.projectName.toLowerCase()]
+                });
+                projectMap.set(lowerProj, newProj.id);
+                projId = newProj.id;
+              }
+            }
+
+            // Collection resolution
+            let colId: string | undefined;
+            const colName = item.collectionName || (item.folderPath.length > 0 ? item.folderPath[item.folderPath.length - 1] : undefined);
+            if (colName && (includeCollections || importAll)) {
+              const lowerCol = colName.toLowerCase();
+              if (collectionMap.has(lowerCol)) {
+                colId = collectionMap.get(lowerCol);
               } else {
                 const newCol = await CollectionRepository.create({
-                  name: folderName,
-                  slug: folderName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                  name: colName,
+                  slug: colName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
                   sortOrder: collections.length + 1
                 });
-                collectionMap.set(lowerFolder, newCol.id);
+                collectionMap.set(lowerCol, newCol.id);
                 colId = newCol.id;
               }
             }
@@ -191,7 +341,11 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
               url: item.url,
               cleanUrl: clean,
               domain,
+              favicon: item.icon,
               collectionId: colId,
+              projectId: projId,
+              projectStage: item.projectStage,
+              accountProfileId: item.googleAuthUser !== undefined ? (item.googleAuthUser === 1 ? 'acc_dev' : item.googleAuthUser === 2 ? 'acc_work' : 'acc_personal') : undefined,
               tags: item.folderPath.map(f => f.toLowerCase().replace(/\s+/g, '-')),
               isFavorite: false,
               isPinned: false,
@@ -205,7 +359,6 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
           }
         }
 
-        // Save batches
         if (newBookmarks.length > 0) await BookmarkRepository.bulkAdd(newBookmarks);
         for (const qs of newQuickSites) {
           await QuickSiteRepository.create(qs);
@@ -221,7 +374,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         origin: { y: 0.6 }
       });
 
-      const totalImported = parsedItems.filter(p => p.selectedType !== 'skip').length;
+      const totalImported = quickLinksCount + bookmarksCount + articlesCount;
       setSuccessMessage(`Successfully imported ${totalImported} items into LinkDeck!`);
       onRefresh();
     } catch (err) {
@@ -230,7 +383,6 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       setImporting(false);
     }
   };
-
 
   const handleExportJson = async () => {
     const json = await BackupManager.exportBackup();
@@ -259,7 +411,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="w-full max-w-2xl bg-deck-bg-card border border-deck-bg-border rounded-2xl shadow-2xl overflow-hidden my-8"
+          className="w-full max-w-3xl bg-deck-bg-card border border-deck-bg-border rounded-2xl shadow-2xl overflow-hidden my-8"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-deck-bg-border bg-deck-bg-elevated/80">
@@ -272,7 +424,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                   Data Portability, Import & Export
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Escape browser fragmentation & maintain full ownership of your bookmarks
+                  Chrome Bookmark HTML & LinkDeck Native Backup
                 </p>
               </div>
             </div>
@@ -314,13 +466,13 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
             {activeTab === 'import' ? (
               <div className="space-y-5">
                 {/* File Drop Area */}
-                <label className="border-2 border-dashed border-deck-bg-border hover:border-cyan-500/50 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer bg-deck-bg-elevated/30 hover:bg-deck-bg-elevated/60 transition group text-center">
-                  <Upload size={32} className="text-slate-500 group-hover:text-cyan-400 transition mb-3" />
+                <label className="border-2 border-dashed border-deck-bg-border hover:border-cyan-500/50 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer bg-deck-bg-elevated/30 hover:bg-deck-bg-elevated/60 transition group text-center">
+                  <Upload size={28} className="text-slate-500 group-hover:text-cyan-400 transition mb-2" />
                   <span className="text-sm font-semibold text-slate-200 group-hover:text-white mb-1">
-                    Select Bookmark Export File
+                    Select Bookmark HTML or LinkDeck JSON File
                   </span>
                   <span className="text-xs text-slate-400 max-w-sm">
-                    Accepts standard HTML exports from Chrome, Edge, Firefox, Brave, Safari, or LinkDeck JSON backups
+                    Upload your Chrome/Edge HTML export or native linkdeck_backup.json
                   </span>
                   <input
                     type="file"
@@ -330,253 +482,289 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                   />
                 </label>
 
-                {/* File Summary & Classification Review */}
+                {/* Import Analysis Summary */}
                 {parsedItems.length > 0 && (
-                  <div className="p-4 rounded-xl bg-deck-bg-elevated border border-deck-bg-border space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {isJsonBackup ? <FileJson size={18} className="text-cyan-400" /> : <FileCode size={18} className="text-emerald-400" />}
-                        <span className="text-xs font-semibold text-white truncate max-w-[280px]">
-                          {fileName}
+                  <div className="space-y-4">
+                    {/* Summary Badges Grid */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                          Import Analysis ({fileName})
                         </span>
+                        {isJsonBackup ? (
+                          <span className="text-[11px] font-mono text-cyan-400 flex items-center gap-1">
+                            <FileJson size={13} /> LinkDeck Native Backup
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
+                            <FileCode size={13} /> Netscape Bookmark HTML
+                          </span>
+                        )}
                       </div>
-                      <span className="text-xs font-mono text-cyan-400 font-semibold">
-                        {parsedItems.length} links found
-                      </span>
+
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-deck-border text-center">
+                          <div className="text-[11px] text-amber-400 font-medium flex items-center justify-center gap-1">
+                            <Zap size={12} /> Quick Links
+                          </div>
+                          <div className="text-base font-bold text-white mt-1">{quickLinksCount}</div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-deck-border text-center">
+                          <div className="text-[11px] text-cyan-400 font-medium flex items-center justify-center gap-1">
+                            <Layers size={12} /> Bookmarks
+                          </div>
+                          <div className="text-base font-bold text-white mt-1">{bookmarksCount}</div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-deck-border text-center">
+                          <div className="text-[11px] text-emerald-400 font-medium flex items-center justify-center gap-1">
+                            <BookOpen size={12} /> Articles
+                          </div>
+                          <div className="text-base font-bold text-white mt-1">{articlesCount}</div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-deck-border text-center">
+                          <div className="text-[11px] text-pink-400 font-medium flex items-center justify-center gap-1">
+                            <Briefcase size={12} /> Projects
+                          </div>
+                          <div className="text-base font-bold text-white mt-1">{projectsCount}</div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-deck-border text-center">
+                          <div className="text-[11px] text-indigo-400 font-medium flex items-center justify-center gap-1">
+                            <Folder size={12} /> Collections
+                          </div>
+                          <div className="text-base font-bold text-white mt-1">{collectionsCount}</div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-deck-border text-center">
+                          <div className="text-[11px] text-slate-400 font-medium flex items-center justify-center gap-1">
+                            <Copy size={12} /> Duplicates
+                          </div>
+                          <div className="text-base font-bold text-white mt-1">{duplicatesCount}</div>
+                        </div>
+                      </div>
                     </div>
 
-                    {!isJsonBackup && (
-                      <>
-                        {/* Classification Count Badges */}
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="p-2.5 rounded-lg bg-deck-accent/10 border border-deck-accent/30 text-center">
-                            <span className="text-[10px] uppercase tracking-wider font-semibold text-deck-accent block">
-                              Quick Sites
-                            </span>
-                            <span className="text-sm font-bold text-white">
-                              {parsedItems.filter(p => p.selectedType === 'quick_site').length}
-                            </span>
+                    {/* Inspection Sub-tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-deck-border/60">
+                      {[
+                        { id: 'all', label: `All (${parsedItems.length})` },
+                        { id: 'quick_site', label: `Quick Links (${quickLinksCount})` },
+                        { id: 'article', label: `Articles (${articlesCount})` },
+                        { id: 'collections', label: `Collections (${collectionsCount})` },
+                        { id: 'projects', label: `Projects (${projectsCount})` },
+                        { id: 'duplicates', label: `Duplicates (${duplicatesCount})` },
+                        { id: 'uncertain', label: `Uncertain (${uncertainCount})` }
+                      ].map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => setInspectTab(t.id as any)}
+                          className={`px-2.5 py-1 text-xs rounded-lg whitespace-nowrap transition ${
+                            inspectTab === t.id
+                              ? 'bg-cyan-500/20 text-cyan-300 font-semibold'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Inspection List View */}
+                    <div className="max-h-48 overflow-y-auto space-y-1.5 p-2 rounded-xl bg-slate-950/60 border border-deck-border/40">
+                      {displayedItems.length > 0 ? (
+                        displayedItems.slice(0, 40).map((it, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-slate-900/60 text-xs"
+                          >
+                            <div className="truncate">
+                              <span className="font-semibold text-slate-200">{it.title}</span>
+                              <span className="text-[11px] text-slate-400 ml-2">{it.domain}</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {it.isDuplicate && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                                  Duplicate
+                                </span>
+                              )}
+                              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                                {it.selectedType}
+                              </span>
+                            </div>
                           </div>
-                          <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-center">
-                            <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-400 block">
-                              Articles
-                            </span>
-                            <span className="text-sm font-bold text-white">
-                              {parsedItems.filter(p => p.selectedType === 'article').length}
-                            </span>
-                          </div>
-                          <div className="p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/30 text-center">
-                            <span className="text-[10px] uppercase tracking-wider font-semibold text-purple-400 block">
-                              Bookmarks
-                            </span>
-                            <span className="text-sm font-bold text-white">
-                              {parsedItems.filter(p => p.selectedType === 'bookmark').length}
-                            </span>
-                          </div>
+                        ))
+                      ) : (
+                        <div className="p-4 text-center text-slate-500 text-xs">
+                          No items in this filter.
                         </div>
+                      )}
+                    </div>
 
-                        {/* Classification Filter Tabs */}
-                        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
-                          <div className="flex items-center gap-1 overflow-x-auto">
-                            {(['all', 'quick_site', 'article', 'bookmark'] as const).map(tab => {
-                              const count = tab === 'all'
-                                ? parsedItems.length
-                                : parsedItems.filter(p => p.selectedType === tab).length;
-                              const isActive = classificationFilter === tab;
-                              return (
-                                <button
-                                  key={tab}
-                                  onClick={() => setClassificationFilter(tab)}
-                                  className={`px-2.5 py-1 text-[11px] font-medium rounded-lg capitalize transition-colors ${
-                                    isActive
-                                      ? 'bg-slate-700 text-white font-semibold'
-                                      : 'text-slate-400 hover:text-slate-200'
-                                  }`}
-                                >
-                                  {tab.replace('_', ' ')} ({count})
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <span className="text-[10px] text-slate-500 shrink-0">
-                            Auto-classified
-                          </span>
-                        </div>
+                    {/* Advanced Import Options */}
+                    <div className="p-4 rounded-xl bg-slate-900/60 border border-deck-border/40 space-y-3">
+                      <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                        Import Options
+                      </span>
 
-                        {/* Classification Review List */}
-                        <div className="max-h-56 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-800/60">
-                          {parsedItems
-                            .map((item, originalIndex) => ({ item, originalIndex }))
-                            .filter(({ item }) => classificationFilter === 'all' || item.selectedType === classificationFilter)
-                            .slice(0, 50)
-                            .map(({ item, originalIndex }) => (
-                              <div key={originalIndex} className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-xs font-semibold text-slate-200 truncate">
-                                      {item.title}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-[10px] text-slate-500 font-mono truncate max-w-[180px]">
-                                      {item.domain}
-                                    </span>
-                                    {item.folderPath.length > 0 && (
-                                      <span className="text-[10px] text-slate-600 truncate max-w-[120px]">
-                                        📁 {item.folderPath[item.folderPath.length - 1]}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={includeQuickSites}
+                            onChange={e => setIncludeQuickSites(e.target.checked)}
+                            className="text-cyan-500 rounded focus:ring-0"
+                          />
+                          <span className="text-slate-300">Quick Links</span>
+                        </label>
 
-                                {/* Segmented Type Switcher */}
-                                <div className="flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-800 shrink-0 self-start sm:self-auto text-[10px]">
-                                  <button
-                                    onClick={() => handleItemTypeChange(originalIndex, 'quick_site')}
-                                    className={`px-2 py-0.5 rounded transition-colors ${
-                                      item.selectedType === 'quick_site'
-                                        ? 'bg-deck-accent text-white font-semibold shadow-sm'
-                                        : 'text-slate-400 hover:text-slate-200'
-                                    }`}
-                                  >
-                                    Site
-                                  </button>
-                                  <button
-                                    onClick={() => handleItemTypeChange(originalIndex, 'bookmark')}
-                                    className={`px-2 py-0.5 rounded transition-colors ${
-                                      item.selectedType === 'bookmark'
-                                        ? 'bg-purple-600 text-white font-semibold shadow-sm'
-                                        : 'text-slate-400 hover:text-slate-200'
-                                    }`}
-                                  >
-                                    Bookmark
-                                  </button>
-                                  <button
-                                    onClick={() => handleItemTypeChange(originalIndex, 'article')}
-                                    className={`px-2 py-0.5 rounded transition-colors ${
-                                      item.selectedType === 'article'
-                                        ? 'bg-emerald-600 text-white font-semibold shadow-sm'
-                                        : 'text-slate-400 hover:text-slate-200'
-                                    }`}
-                                  >
-                                    Article
-                                  </button>
-                                  <button
-                                    onClick={() => handleItemTypeChange(originalIndex, 'skip')}
-                                    className={`px-2 py-0.5 rounded transition-colors ${
-                                      item.selectedType === 'skip'
-                                        ? 'bg-rose-900/60 text-rose-300 font-semibold'
-                                        : 'text-slate-500 hover:text-rose-400'
-                                    }`}
-                                  >
-                                    Skip
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                        </div>
-                      </>
-                    )}
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={includeBookmarks}
+                            onChange={e => setIncludeBookmarks(e.target.checked)}
+                            className="text-cyan-500 rounded focus:ring-0"
+                          />
+                          <span className="text-slate-300">Bookmarks</span>
+                        </label>
 
-                    {duplicateCount > 0 && !isJsonBackup && (
-                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
-                        <AlertTriangle size={14} className="shrink-0" />
-                        <span>
-                          {duplicateCount} duplicate URLs detected.
-                        </span>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={includeArticles}
+                            onChange={e => setIncludeArticles(e.target.checked)}
+                            className="text-cyan-500 rounded focus:ring-0"
+                          />
+                          <span className="text-slate-300">Articles</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={includeProjects}
+                            onChange={e => setIncludeProjects(e.target.checked)}
+                            className="text-cyan-500 rounded focus:ring-0"
+                          />
+                          <span className="text-slate-300">Projects</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={includeCollections}
+                            onChange={e => setIncludeCollections(e.target.checked)}
+                            className="text-cyan-500 rounded focus:ring-0"
+                          />
+                          <span className="text-slate-300">Collections</span>
+                        </label>
                       </div>
-                    )}
 
-                    <button
-                      onClick={handleExecuteImport}
-                      disabled={importing}
-                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 text-white font-semibold text-xs shadow-glow-cyan transition flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle2 size={16} />
-                      <span>{importing ? 'Importing...' : `Import ${parsedItems.filter(p => p.selectedType !== 'skip').length} Categorized Items`}</span>
-                    </button>
+                      {/* Duplicate handling */}
+                      <div className="pt-2 border-t border-deck-border/40 flex flex-wrap items-center gap-4 text-xs">
+                        <span className="text-slate-400 font-medium">Duplicate handling:</span>
+                        {(['skip', 'merge', 'keep'] as const).map(mode => (
+                          <label key={mode} className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="dupMode"
+                              value={mode}
+                              checked={duplicateHandling === mode}
+                              onChange={() => setDuplicateHandling(mode)}
+                              className="text-cyan-500 focus:ring-0"
+                            />
+                            <span className="text-slate-300 capitalize">
+                              {mode === 'skip' ? 'Skip duplicates' : mode === 'merge' ? 'Merge metadata' : 'Keep both'}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                      <div className="text-xs text-slate-400">
+                        Zero data loss. Non-destructive import.
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                          disabled={importing}
+                          onClick={() => handleExecuteImport(false)}
+                          className="flex-1 sm:flex-none px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
+                        >
+                          Import Selected
+                        </button>
+                        <button
+                          disabled={importing}
+                          onClick={() => handleExecuteImport(true)}
+                          className="flex-1 sm:flex-none px-5 py-2 rounded-xl text-xs font-semibold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
+                        >
+                          {importing ? (
+                            <span>Importing...</span>
+                          ) : (
+                            <>
+                              <CheckCircle2 size={14} />
+                              <span>Import Everything</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {successMessage && (
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                  <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-center gap-2">
                     <CheckCircle2 size={16} />
                     <span>{successMessage}</span>
                   </div>
                 )}
               </div>
             ) : (
-              /* Export View */
-              <div className="space-y-6">
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Export all your LinkDeck bookmarks, projects, collections, and Google routing rules.
-                  You can restore this backup on any browser or machine without an account.
+              /* Export Tab */
+              <div className="space-y-4">
+                <p className="text-xs text-slate-400">
+                  Export your LinkDeck library at any time. Your data stays 100% yours.
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-5 rounded-2xl bg-deck-bg-elevated border border-deck-bg-border hover:border-cyan-500/40 transition flex flex-col justify-between space-y-4">
-                    <div className="space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                        <FileJson size={20} />
-                      </div>
-                      <h4 className="text-sm font-semibold text-white">Full LinkDeck JSON Backup</h4>
-                      <p className="text-xs text-slate-400">
-                        Includes bookmarks, projects, stages, collections, tags, account profiles, and preferences.
-                      </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  <div className="p-4 rounded-xl bg-deck-bg-elevated/40 border border-deck-bg-border space-y-3">
+                    <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                      <FileCode className="text-emerald-400" size={18} />
+                      <span>Netscape Bookmark HTML</span>
                     </div>
+                    <p className="text-xs text-slate-400">
+                      Standard bookmark file compatible with Chrome, Edge, Safari, Firefox, and Brave.
+                    </p>
                     <button
-                      onClick={handleExportJson}
-                      className="w-full py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold text-xs transition flex items-center justify-center gap-2 shadow"
+                      onClick={handleExportHtml}
+                      className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition"
                     >
                       <Download size={14} />
-                      <span>Download JSON Backup</span>
+                      <span>Export HTML Bookmarks</span>
                     </button>
                   </div>
 
-                  <div className="p-5 rounded-2xl bg-deck-bg-elevated border border-deck-bg-border hover:border-violet-500/40 transition flex flex-col justify-between space-y-4">
-                    <div className="space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/30 flex items-center justify-center text-violet-400">
-                        <FileCode size={20} />
-                      </div>
-                      <h4 className="text-sm font-semibold text-white">Browser HTML Export</h4>
-                      <p className="text-xs text-slate-400">
-                        Standard Netscape HTML format compatible with Chrome, Safari, Firefox, Edge, and Brave.
-                      </p>
+                  <div className="p-4 rounded-xl bg-deck-bg-elevated/40 border border-deck-bg-border space-y-3">
+                    <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                      <FileJson className="text-cyan-400" size={18} />
+                      <span>LinkDeck Native JSON Backup</span>
                     </div>
+                    <p className="text-xs text-slate-400">
+                      Full backup preserving Quick Sites, Articles, Projects, Collections, and Google accounts.
+                    </p>
                     <button
-                      onClick={handleExportHtml}
-                      className="w-full py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs transition flex items-center justify-center gap-2 shadow"
+                      onClick={handleExportJson}
+                      className="w-full py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition"
                     >
                       <Download size={14} />
-                      <span>Download HTML Bookmarks</span>
+                      <span>Export JSON Backup</span>
                     </button>
                   </div>
                 </div>
-
-                {/* Danger Zone: Delete All Bookmarks */}
-                {onDeleteAllBookmarks && bookmarks.length > 0 && (
-                  <div className="p-4 rounded-xl bg-rose-500/5 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4">
-                    <div>
-                      <h5 className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
-                        <Trash2 size={13} />
-                        <span>Danger Zone — Reset Bookmarks</span>
-                      </h5>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Permanently delete all {bookmarks.length} bookmarks from local storage.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        onClose();
-                        onDeleteAllBookmarks();
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-semibold text-xs transition flex items-center gap-1.5 shrink-0"
-                    >
-                      <Trash2 size={13} />
-                      <span>Delete All Bookmarks</span>
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </div>

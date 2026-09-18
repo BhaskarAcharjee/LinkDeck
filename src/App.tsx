@@ -31,6 +31,13 @@ import { AccountPickerModal } from './components/bookmarks/AccountPickerModal';
 import { PasteHandler } from './components/bookmarks/PasteHandler';
 import { StarterPackPrompt } from './components/starter/StarterPackPrompt';
 import { ConfirmDeleteModal } from './components/common/ConfirmDeleteModal';
+import { ItemContextMenu, type ContextMenuItem } from './components/common/ItemContextMenu';
+import { DropConvertModal } from './components/common/DropConvertModal';
+import { BulkActionBar } from './components/bookmarks/BulkActionBar';
+import { SmartSuggestionsBar } from './components/dashboard/SmartSuggestionsBar';
+import { UndoToast } from './components/common/UndoToast';
+import { UndoManager } from './services/undo/undoManager';
+import { ConversionService } from './services/conversion/conversionService';
 
 export function App() {
   // Reactive IndexedDB data
@@ -47,6 +54,18 @@ export function App() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeAccountProfileId] = useState<string | null>(null);
 
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    item: ContextMenuItem;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Drop Convert Bookmark State
+  const [dropConvertBookmark, setDropConvertBookmark] = useState<Bookmark | null>(null);
+
+  // Multi-Selection State for Dashboard Bookmarks
+  const [selectedBookmarkIds, setSelectedBookmarkIds] = useState<Set<string>>(new Set());
 
   // Modal states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
@@ -249,6 +268,241 @@ export function App() {
     confetti({ particleCount: 100, spread: 80, origin: { y: 0.5 } });
   };
 
+  // Context Menu Trigger Handlers
+  const handleOpenContextMenuForBookmark = (e: React.MouseEvent, bookmark: Bookmark) => {
+    setContextMenu({
+      item: { type: 'bookmark', data: bookmark },
+      x: e.clientX,
+      y: e.clientY
+    });
+  };
+
+  const handleOpenContextMenuForQuickSite = (e: React.MouseEvent, site: QuickSite) => {
+    setContextMenu({
+      item: { type: 'quick_site', data: site },
+      x: e.clientX,
+      y: e.clientY
+    });
+  };
+
+  const handleOpenContextMenuForArticle = (e: React.MouseEvent, article: Article) => {
+    setContextMenu({
+      item: { type: 'article', data: article },
+      x: e.clientX,
+      y: e.clientY
+    });
+  };
+
+  const handleContextMenuOpen = (item: ContextMenuItem, inNewTab = false) => {
+    if (inNewTab) {
+      window.open(item.data.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (item.type === 'bookmark') {
+      handleOpenBookmark(item.data);
+    } else if (item.type === 'quick_site') {
+      handleOpenQuickSite(item.data);
+    } else if (item.type === 'article') {
+      handleOpenArticle(item.data);
+    }
+  };
+
+  const handleContextMenuOpenWithAccount = (item: ContextMenuItem, account: AccountProfile) => {
+    if (item.type === 'bookmark') {
+      handleOpenBookmark(item.data, account);
+    } else if (item.type === 'quick_site') {
+      handleOpenQuickSite(item.data, account);
+    }
+  };
+
+  const handleConvertItem = async (
+    item: ContextMenuItem,
+    targetType: 'bookmark' | 'quick_site' | 'article',
+    duplicate = false,
+    collectionId?: string
+  ) => {
+    if (item.type === 'bookmark') {
+      if (targetType === 'quick_site') {
+        const qs = await ConversionService.bookmarkToQuickSite(item.data, { duplicate });
+        UndoManager.push(duplicate ? `Duplicated "${item.data.title}" as Quick Site` : `Converted "${item.data.title}" to Quick Site`, async () => {
+          if (!duplicate) await ConversionService.quickSiteToBookmark(qs, item.data.collectionId);
+          else await QuickSiteRepository.delete(qs.id);
+        });
+      } else if (targetType === 'article') {
+        const art = await ConversionService.bookmarkToArticle(item.data, { duplicate });
+        UndoManager.push(duplicate ? `Duplicated "${item.data.title}" as Article` : `Converted "${item.data.title}" to Article`, async () => {
+          if (!duplicate) await ConversionService.articleToBookmark(art, item.data.collectionId);
+          else await ArticleRepository.delete(art.id);
+        });
+      }
+    } else if (item.type === 'quick_site') {
+      if (targetType === 'bookmark') {
+        const bm = await ConversionService.quickSiteToBookmark(item.data, collectionId, { duplicate });
+        UndoManager.push(duplicate ? `Duplicated "${item.data.title}" as Bookmark` : `Converted "${item.data.title}" to Bookmark`, async () => {
+          if (!duplicate) await ConversionService.bookmarkToQuickSite(bm);
+          else await BookmarkRepository.delete(bm.id);
+        });
+      } else if (targetType === 'article') {
+        const art = await ConversionService.quickSiteToArticle(item.data, { duplicate });
+        UndoManager.push(duplicate ? `Duplicated "${item.data.title}" as Article` : `Converted "${item.data.title}" to Article`, async () => {
+          if (!duplicate) await ConversionService.articleToQuickSite(art);
+          else await ArticleRepository.delete(art.id);
+        });
+      }
+    } else if (item.type === 'article') {
+      if (targetType === 'bookmark') {
+        const bm = await ConversionService.articleToBookmark(item.data, collectionId, { duplicate });
+        UndoManager.push(duplicate ? `Duplicated "${item.data.title}" as Bookmark` : `Converted "${item.data.title}" to Bookmark`, async () => {
+          if (!duplicate) await ConversionService.bookmarkToArticle(bm);
+          else await BookmarkRepository.delete(bm.id);
+        });
+      } else if (targetType === 'quick_site') {
+        const qs = await ConversionService.articleToQuickSite(item.data, { duplicate });
+        UndoManager.push(duplicate ? `Duplicated "${item.data.title}" as Quick Site` : `Converted "${item.data.title}" to Quick Site`, async () => {
+          if (!duplicate) await ConversionService.quickSiteToArticle(qs);
+          else await QuickSiteRepository.delete(qs.id);
+        });
+      }
+    }
+  };
+
+  const handleDeleteContextMenuItem = async (item: ContextMenuItem) => {
+    if (item.type === 'bookmark') {
+      const bm = item.data;
+      await BookmarkRepository.delete(bm.id);
+      UndoManager.push(`Deleted "${bm.title}"`, async () => {
+        await BookmarkRepository.create(bm);
+      });
+    } else if (item.type === 'quick_site') {
+      const qs = item.data;
+      await QuickSiteRepository.delete(qs.id);
+      UndoManager.push(`Deleted "${qs.title}"`, async () => {
+        await QuickSiteRepository.create(qs);
+      });
+    } else if (item.type === 'article') {
+      const art = item.data;
+      await ArticleRepository.delete(art.id);
+      UndoManager.push(`Deleted "${art.title}"`, async () => {
+        await ArticleRepository.create(art);
+      });
+    }
+  };
+
+  const handleEditContextMenuItem = (item: ContextMenuItem) => {
+    if (item.type === 'bookmark') {
+      setEditingBookmark(item.data);
+      setIsBookmarkModalOpen(true);
+    } else if (item.type === 'quick_site') {
+      setEditingBookmark({
+        id: item.data.id,
+        title: item.data.title,
+        url: item.data.url,
+        cleanUrl: item.data.cleanUrl,
+        domain: item.data.domain,
+        favicon: item.data.icon,
+        accountProfileId: item.data.accountProfileId,
+        tags: [],
+        isFavorite: item.data.isPinned,
+        isPinned: item.data.isPinned,
+        isArchived: false,
+        openCount: item.data.openCount,
+        createdAt: item.data.createdAt,
+        updatedAt: item.data.updatedAt,
+        sortOrder: item.data.sortOrder
+      });
+      setIsBookmarkModalOpen(true);
+    } else if (item.type === 'article') {
+      setEditingBookmark({
+        id: item.data.id,
+        title: item.data.title,
+        url: item.data.url,
+        cleanUrl: item.data.cleanUrl,
+        domain: item.data.domain,
+        favicon: item.data.favicon,
+        notes: item.data.excerpt,
+        tags: item.data.tags || [],
+        isFavorite: item.data.isFavorite,
+        isPinned: false,
+        isArchived: item.data.readingStatus === 'archived',
+        openCount: 0,
+        createdAt: item.data.savedAt,
+        updatedAt: item.data.updatedAt,
+        sortOrder: 0
+      });
+      setIsBookmarkModalOpen(true);
+    }
+  };
+
+  // Drag-and-drop Bookmark -> Quick Site confirmation
+  const handleConfirmDropConvert = async () => {
+    if (!dropConvertBookmark) return;
+    const bm = dropConvertBookmark;
+    const qs = await ConversionService.bookmarkToQuickSite(bm, { duplicate: false });
+    setDropConvertBookmark(null);
+    UndoManager.push(`Converted "${bm.title}" to Quick Site`, async () => {
+      await ConversionService.quickSiteToBookmark(qs, bm.collectionId);
+    });
+  };
+
+  // Bulk actions on dashboard
+  const handleToggleSelectBookmark = (bookmarkId: string) => {
+    const next = new Set(selectedBookmarkIds);
+    if (next.has(bookmarkId)) next.delete(bookmarkId);
+    else next.add(bookmarkId);
+    setSelectedBookmarkIds(next);
+  };
+
+  const handleBulkMove = async (colId: string) => {
+    const ids = Array.from(selectedBookmarkIds);
+    const targetCol = collections.find(c => c.id === colId);
+    const previousCols = new Map(bookmarks.filter(b => ids.includes(b.id)).map(b => [b.id, b.collectionId]));
+
+    for (const id of ids) {
+      await BookmarkRepository.update(id, { collectionId: colId });
+    }
+    setSelectedBookmarkIds(new Set());
+
+    UndoManager.push(`Moved ${ids.length} bookmarks to ${targetCol?.name || 'collection'}`, async () => {
+      for (const [bmId, oldColId] of previousCols.entries()) {
+        await BookmarkRepository.update(bmId, { collectionId: oldColId });
+      }
+    });
+  };
+
+  const handleBulkConvertToQuickLinks = async () => {
+    const ids = Array.from(selectedBookmarkIds);
+    const bms = bookmarks.filter(b => ids.includes(b.id));
+
+    for (const bm of bms) {
+      await ConversionService.bookmarkToQuickSite(bm, { duplicate: false });
+    }
+    setSelectedBookmarkIds(new Set());
+    UndoManager.push(`Converted ${ids.length} bookmarks to Quick Sites`, async () => {
+      // Undo handled by individual conversions
+    });
+  };
+
+  const handleBulkAddTag = async (tag: string) => {
+    const ids = Array.from(selectedBookmarkIds);
+    for (const id of ids) {
+      const bm = bookmarks.find(b => b.id === id);
+      if (bm && !bm.tags?.includes(tag)) {
+        await BookmarkRepository.update(id, { tags: [...(bm.tags || []), tag] });
+      }
+    }
+    setSelectedBookmarkIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedBookmarkIds);
+    if (confirm(`Delete ${ids.length} selected bookmarks?`)) {
+      for (const id of ids) {
+        await BookmarkRepository.delete(id);
+      }
+      setSelectedBookmarkIds(new Set());
+    }
+  };
+
   const selectedProject = projects.find(p => p.id === activeProjectId);
 
   return (
@@ -297,6 +551,7 @@ export function App() {
               setIsBookmarkModalOpen(true);
             }}
             onBackToDashboard={() => setCurrentView('dashboard')}
+            onContextMenu={handleOpenContextMenuForArticle}
           />
         ) : currentView === 'project' && selectedProject ? (
           // Project Workspace View
@@ -355,10 +610,38 @@ export function App() {
               setIsBookmarkModalOpen(true);
             }}
             onRefresh={() => {}}
+            onBookmarkContextMenu={handleOpenContextMenuForBookmark}
           />
         ) : (
           // Primary Developer Dashboard
           <div className="space-y-8">
+            {/* Smart Suggestions Bar (Non-intrusive) */}
+            <SmartSuggestionsBar
+              bookmarks={bookmarks}
+              quickSites={quickSites}
+              collections={collections}
+              onConvertToQuickSite={async bm => {
+                const qs = await ConversionService.bookmarkToQuickSite(bm, { duplicate: false });
+                UndoManager.push(`Converted "${bm.title}" to Quick Site`, async () => {
+                  await ConversionService.quickSiteToBookmark(qs, bm.collectionId);
+                });
+              }}
+              onConvertToArticle={async bm => {
+                const art = await ConversionService.bookmarkToArticle(bm, { duplicate: false });
+                UndoManager.push(`Converted "${bm.title}" to Article`, async () => {
+                  await ConversionService.articleToBookmark(art, bm.collectionId);
+                });
+              }}
+              onMoveToCollection={async (bm, colId) => {
+                const prevColId = bm.collectionId;
+                await BookmarkRepository.update(bm.id, { collectionId: colId });
+                const colName = collections.find(c => c.id === colId)?.name || 'collection';
+                UndoManager.push(`Moved "${bm.title}" to ${colName}`, async () => {
+                  await BookmarkRepository.update(bm.id, { collectionId: prevColId });
+                });
+              }}
+            />
+
             {/* 1. Quick Sites Launcher (Large icon launchers ARC/macOS style) */}
             {quickSites.length > 0 && (
               <QuickSitesSection
@@ -370,6 +653,11 @@ export function App() {
                   setPresetUrlForBookmark('');
                   setIsBookmarkModalOpen(true);
                 }}
+                onDropBookmark={bmId => {
+                  const bm = bookmarks.find(b => b.id === bmId);
+                  if (bm) setDropConvertBookmark(bm);
+                }}
+                onContextMenu={handleOpenContextMenuForQuickSite}
               />
             )}
 
@@ -404,12 +692,21 @@ export function App() {
               projects={projects}
               collections={collections}
               accounts={accounts}
+              selectedBookmarkIds={selectedBookmarkIds}
+              onToggleSelectBookmark={handleToggleSelectBookmark}
+              onBookmarkContextMenu={handleOpenContextMenuForBookmark}
               onEditBookmark={b => {
                 setEditingBookmark(b);
                 setIsBookmarkModalOpen(true);
               }}
               onDeleteBookmark={async id => {
+                const bm = bookmarks.find(b => b.id === id);
                 await BookmarkRepository.delete(id);
+                if (bm) {
+                  UndoManager.push(`Deleted "${bm.title}"`, async () => {
+                    await BookmarkRepository.create(bm);
+                  });
+                }
               }}
               onDeleteAllBookmarks={() => setIsConfirmDeleteAllOpen(true)}
               onRequestAccountPick={handleRequestAccountPick}
@@ -422,11 +719,25 @@ export function App() {
                 articles={articles}
                 onOpenArticle={handleOpenArticle}
                 onViewAllArticles={() => setCurrentView('articles')}
+                onContextMenu={handleOpenContextMenuForArticle}
               />
             )}
           </div>
         )}
       </main>
+
+      {/* Floating Bulk Action Bar */}
+      {currentView === 'dashboard' && selectedBookmarkIds.size > 0 && (
+        <BulkActionBar
+          selectedCount={selectedBookmarkIds.size}
+          collections={collections}
+          onMoveToCollection={handleBulkMove}
+          onConvertToQuickLinks={handleBulkConvertToQuickLinks}
+          onAddTag={handleBulkAddTag}
+          onDeleteSelected={handleBulkDelete}
+          onClearSelection={() => setSelectedBookmarkIds(new Set())}
+        />
+      )}
 
       {/* Global Modals */}
 
@@ -547,6 +858,77 @@ export function App() {
           setIsBookmarkModalOpen(true);
         }}
       />
+
+      {/* Universal Context Menu */}
+      {contextMenu && (
+        <ItemContextMenu
+          item={contextMenu.item}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          collections={collections}
+          projects={projects}
+          accounts={accounts}
+          onClose={() => setContextMenu(null)}
+          onOpen={handleContextMenuOpen}
+          onOpenWithAccount={handleContextMenuOpenWithAccount}
+          onEdit={handleEditContextMenuItem}
+          onDelete={handleDeleteContextMenuItem}
+          onConvert={handleConvertItem}
+          onToggleFavorite={async item => {
+            if (item.type === 'bookmark') {
+              await BookmarkRepository.toggleFavorite(item.data.id);
+            } else if (item.type === 'article') {
+              await ArticleRepository.toggleFavorite(item.data.id);
+            }
+          }}
+          onTogglePin={async item => {
+            if (item.type === 'bookmark') {
+              await BookmarkRepository.togglePin(item.data.id);
+            } else if (item.type === 'quick_site') {
+              await QuickSiteRepository.togglePin(item.data.id);
+            }
+          }}
+          onMoveToCollection={async (bookmark, colId) => {
+            const prevColId = bookmark.collectionId;
+            await BookmarkRepository.update(bookmark.id, { collectionId: colId });
+            const colName = collections.find(c => c.id === colId)?.name || 'Unsorted';
+            UndoManager.push(`Moved "${bookmark.title}" to ${colName}`, async () => {
+              await BookmarkRepository.update(bookmark.id, { collectionId: prevColId });
+            });
+          }}
+          onMoveToProject={async (bookmark, projId) => {
+            const prevProjId = bookmark.projectId;
+            await BookmarkRepository.update(bookmark.id, { projectId: projId });
+            const projName = projects.find(p => p.id === projId)?.name || 'None';
+            UndoManager.push(`Moved "${bookmark.title}" to ${projName}`, async () => {
+              await BookmarkRepository.update(bookmark.id, { projectId: prevProjId });
+            });
+          }}
+          onToggleArchive={async bookmark => {
+            await BookmarkRepository.update(bookmark.id, { isArchived: !bookmark.isArchived });
+          }}
+          onToggleHide={async site => {
+            await QuickSiteRepository.toggleHide(site.id);
+          }}
+          onSetReadingStatus={async (article, status) => {
+            await ArticleRepository.setStatus(article.id, status);
+          }}
+          onNewCollection={() => {
+            setCurrentView('collections');
+          }}
+        />
+      )}
+
+      {/* Drag & Drop Convert to Quick Link Confirmation Modal */}
+      <DropConvertModal
+        isOpen={!!dropConvertBookmark}
+        bookmark={dropConvertBookmark}
+        onConfirm={handleConfirmDropConvert}
+        onCancel={() => setDropConvertBookmark(null)}
+      />
+
+      {/* Global Temporary Undo Notification Toast */}
+      <UndoToast />
     </div>
   );
 }

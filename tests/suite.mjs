@@ -1,4 +1,6 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 import { GoogleAccountRouter } from '../src/services/routing/GoogleAccountRouter.ts';
 import { UrlNormalizer } from '../src/services/routing/urlNormalizer.ts';
 import { NetscapeParser } from '../src/services/import-export/netscapeParser.ts';
@@ -7,6 +9,8 @@ import { detectService, getServiceById } from '../src/services/routing/serviceRe
 import { AccountRepository } from '../src/core/repositories/AccountRepository.ts';
 import { QuickSiteRepository } from '../src/core/repositories/QuickSiteRepository.ts';
 import { ArticleRepository } from '../src/core/repositories/ArticleRepository.ts';
+import { ConversionService } from '../src/services/conversion/conversionService.ts';
+import { BackupManager } from '../src/services/import-export/backupManager.ts';
 
 console.log('--- RUNNING LINKDECK TEST SUITE ---');
 
@@ -417,7 +421,193 @@ for (const res of searchUniversalResults) {
 }
 console.log('✓ Universal Search Engine with Prefix Filters Passed');
 
+// ==========================================
+// TEST 15: Type Conversion Engine & Metadata Retention
+// ==========================================
+console.log('[Test 15] Type Conversion Engine & Metadata Retention');
+const testBookmark = {
+  id: 'bm_test',
+  title: 'Claude AI Assistant',
+  url: 'https://claude.ai/chats?utm_source=bookmark',
+  cleanUrl: 'https://claude.ai/chats',
+  domain: 'claude.ai',
+  favicon: 'https://claude.ai/favicon.ico',
+  collectionId: 'col_ai',
+  accountProfileId: 'acc_dev',
+  tags: ['ai', 'assistant'],
+  notes: 'Useful for code generation and analysis',
+  isFavorite: true,
+  isPinned: true,
+  isArchived: false,
+  openCount: 42,
+  lastOpenedAt: 1700000000000,
+  sortOrder: 10,
+  createdAt: 1690000000000,
+  updatedAt: 1700000000000
+};
+
+// 1. Bookmark -> Quick Site
+const convertedQuickSite = ConversionService.buildQuickSiteFromBookmark(testBookmark);
+assert.strictEqual(convertedQuickSite.title, testBookmark.title);
+assert.strictEqual(convertedQuickSite.url, testBookmark.url);
+assert.strictEqual(convertedQuickSite.cleanUrl, testBookmark.cleanUrl);
+assert.strictEqual(convertedQuickSite.domain, 'claude.ai');
+assert.strictEqual(convertedQuickSite.category, 'ai');
+assert.strictEqual(convertedQuickSite.accountProfileId, 'acc_dev');
+assert.strictEqual(convertedQuickSite.isPinned, true);
+assert.strictEqual(convertedQuickSite.openCount, 42);
+
+// 2. Quick Site -> Bookmark
+const reconvertedBookmark = ConversionService.buildBookmarkFromQuickSite(convertedQuickSite, 'col_ai');
+assert.strictEqual(reconvertedBookmark.title, testBookmark.title);
+assert.strictEqual(reconvertedBookmark.url, testBookmark.url);
+assert.strictEqual(reconvertedBookmark.collectionId, 'col_ai');
+assert.strictEqual(reconvertedBookmark.accountProfileId, 'acc_dev');
+
+// 3. Bookmark -> Article
+const convertedArticle = ConversionService.buildArticleFromBookmark(testBookmark, { readingStatus: 'unread' });
+assert.strictEqual(convertedArticle.title, testBookmark.title);
+assert.strictEqual(convertedArticle.url, testBookmark.url);
+assert.strictEqual(convertedArticle.excerpt, testBookmark.notes);
+assert.deepStrictEqual(convertedArticle.tags, ['ai', 'assistant']);
+assert.strictEqual(convertedArticle.readingStatus, 'unread');
+assert.ok(convertedArticle.estimatedReadingTime > 0);
+
+// 4. Article -> Quick Site
+const articleToQuickSite = ConversionService.buildQuickSiteFromArticle(convertedArticle);
+assert.strictEqual(articleToQuickSite.title, convertedArticle.title);
+assert.strictEqual(articleToQuickSite.category, 'ai');
+
+console.log('✓ Type Conversion Engine & Metadata Retention Passed');
+
+// ==========================================
+// TEST 16: Extended Netscape HTML Parsing with DATA-LINKDECK-* Attributes
+// ==========================================
+console.log('[Test 16] Extended Netscape HTML Parsing with DATA-LINKDECK-* Attributes');
+const sampleExtendedHtml = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+    <DT><H3 ADD_DATE="1600000000">Tools</H3>
+    <DL><p>
+        <DT><A HREF="https://console.cloud.google.com" ADD_DATE="1600000001" DATA-LINKDECK-TYPE="quick_site" DATA-LINKDECK-ACCOUNT="acc_dev">Google Cloud</A>
+        <DT><A HREF="https://blog.google/technology/ai/gemini-2-5/" ADD_DATE="1600000002" DATA-LINKDECK-TYPE="article" DATA-LINKDECK-STATUS="unread">Gemini 2.5 Article</A>
+        <DT><A HREF="https://play.google.com/console/developers/app/123" ADD_DATE="1600000003" DATA-LINKDECK-TYPE="bookmark" DATA-LINKDECK-PROJECT="Pencilate" DATA-LINKDECK-STAGE="production">Pencilate Play Store</A>
+    </DL><p>
+</DL><p>`;
+
+const parsedExtended = NetscapeParser.parse(sampleExtendedHtml);
+assert.strictEqual(parsedExtended.length, 3);
+assert.strictEqual(parsedExtended[0].suggestedType, 'quick_site');
+assert.strictEqual(parsedExtended[0].linkDeckAccount, 'acc_dev');
+assert.strictEqual(parsedExtended[1].suggestedType, 'article');
+assert.strictEqual(parsedExtended[1].readingStatus, 'unread');
+assert.strictEqual(parsedExtended[2].suggestedType, 'bookmark');
+assert.strictEqual(parsedExtended[2].projectName, 'Pencilate');
+assert.strictEqual(parsedExtended[2].projectStage, 'production');
+console.log('✓ Extended Netscape HTML Parsing with DATA-LINKDECK-* Attributes Passed');
+
+// ==========================================
+// TEST 17: Native JSON Backup Format Validation
+// ==========================================
+console.log('[Test 17] Native JSON Backup Format Validation');
+const sampleBackup = {
+  version: 2,
+  exportedAt: new Date().toISOString(),
+  bookmarks: [sampleBookmarks[0]],
+  quickSites: [mockQuickSites[0]],
+  articles: [{
+    id: 'art_1',
+    title: 'Modern Architecture',
+    url: 'https://medium.com/modern-arch',
+    cleanUrl: 'https://medium.com/modern-arch',
+    domain: 'medium.com',
+    readingStatus: 'unread',
+    savedAt: 1000,
+    updatedAt: 1000
+  }],
+  projects: [{ id: 'p1', name: 'App', slug: 'app', color: '#000', tags: [], sortOrder: 1, createdAt: 1000, updatedAt: 1000 }],
+  collections: [{ id: 'c1', name: 'Dev', slug: 'dev', sortOrder: 1, createdAt: 1000 }],
+  accountProfiles: [devAccount]
+};
+
+const backupValidation = BackupManager.validateBackup(sampleBackup);
+assert.strictEqual(backupValidation.valid, true);
+assert.strictEqual(backupValidation.stats.bookmarks, 1);
+assert.strictEqual(backupValidation.stats.quickSites, 1);
+assert.strictEqual(backupValidation.stats.articles, 1);
+assert.strictEqual(backupValidation.stats.projects, 1);
+assert.strictEqual(backupValidation.stats.collections, 1);
+assert.strictEqual(backupValidation.stats.accounts, 1);
+
+const invalidValidation = BackupManager.validateBackup({ version: 2 });
+assert.strictEqual(invalidValidation.valid, false);
+console.log('✓ Native JSON Backup Format Validation Passed');
+
+// ==========================================
+// TEST 18: Real Data Integrity & Generated Export Files Validation
+// ==========================================
+console.log('[Test 18] Real Data Integrity & Generated Export Files Validation');
+
+// 1. Verify linkdeck_organized_bookmarks.html exists and preserves 100% of links
+const organizedHtmlPath = path.resolve('src/assets/linkdeck_organized_bookmarks.html');
+assert.ok(fs.existsSync(organizedHtmlPath), 'Generated linkdeck_organized_bookmarks.html must exist');
+const organizedHtml = fs.readFileSync(organizedHtmlPath, 'utf8');
+const organizedParsed = NetscapeParser.parse(organizedHtml);
+assert.strictEqual(organizedParsed.length, 147, 'Organized HTML must contain all 147 items (0 lost links)');
+
+// 2. If original personal bookmark HTML exists locally, verify 0 lost URLs
+const originalHtmlPath = path.resolve('src/assets/bookmarks_9_16_26.html');
+if (fs.existsSync(originalHtmlPath)) {
+  const originalHtml = fs.readFileSync(originalHtmlPath, 'utf8');
+  const originalParsed = NetscapeParser.parse(originalHtml);
+  assert.strictEqual(originalParsed.length, 147, 'Original file should parse exactly 147 bookmarks');
+  const originalUrlSet = new Set(originalParsed.map(p => p.url));
+  const organizedUrlSet = new Set(organizedParsed.map(p => p.url));
+  for (const originalUrl of originalUrlSet) {
+    assert.ok(organizedUrlSet.has(originalUrl), `Original URL ${originalUrl} must exist in organized HTML!`);
+  }
+}
+
+// 3. Verify linkdeck_backup.json exists and preserves all 147 items
+const backupJsonPath = path.resolve('src/assets/linkdeck_backup.json');
+assert.ok(fs.existsSync(backupJsonPath), 'Generated linkdeck_backup.json must exist');
+const backupJsonRaw = fs.readFileSync(backupJsonPath, 'utf8');
+const backupJson = JSON.parse(backupJsonRaw);
+const backupJsonValidation = BackupManager.validateBackup(backupJson);
+assert.strictEqual(backupJsonValidation.valid, true);
+
+// Sum up items in backup: quickSites + articles + bookmarks
+const totalItemsInBackup =
+  backupJson.quickSites.length +
+  backupJson.articles.length +
+  backupJson.bookmarks.length;
+assert.strictEqual(totalItemsInBackup, 147, 'Native backup must contain exactly 147 items total (0 lost links)');
+
+// Verify category partitioning:
+assert.strictEqual(backupJson.quickSites.length, 35, 'Must have 35 Quick Sites');
+assert.strictEqual(backupJson.articles.length, 8, 'Must have 8 Articles');
+assert.strictEqual(backupJson.bookmarks.length, 104, 'Must have 104 Bookmarks (96 collections + 8 projects)');
+
+// Verify projects:
+assert.strictEqual(backupJson.projects.length, 2, 'Must have 2 Projects: Pencilate and ReactionCam');
+const projectBookmarks = backupJson.bookmarks.filter(b => b.projectId);
+assert.strictEqual(projectBookmarks.length, 8, 'Must have 8 total project-associated bookmarks');
+
+// Verify all original URLs exist in backup
+const backupUrls = new Set([
+  ...backupJson.quickSites.map(s => s.url),
+  ...backupJson.articles.map(a => a.url),
+  ...backupJson.bookmarks.map(b => b.url)
+]);
+for (const originalUrl of originalUrlSet) {
+  assert.ok(backupUrls.has(originalUrl), `Original URL ${originalUrl} must exist in JSON backup!`);
+}
+
+console.log('✓ Real Data Integrity & Generated Export Files Passed (0 Lost URLs across all 147 links)');
+
 console.log('\n=============================================');
-console.log('ALL 14 LINKDECK TEST SUITES PASSED SUCCESSFULLY!');
+console.log('ALL 18 LINKDECK TEST SUITES PASSED SUCCESSFULLY!');
 console.log('=============================================');
 

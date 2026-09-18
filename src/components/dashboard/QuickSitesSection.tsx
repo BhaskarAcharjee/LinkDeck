@@ -9,6 +9,8 @@ interface QuickSitesSectionProps {
   accounts: AccountProfile[];
   onOpenSite: (site: QuickSite, chosenAccount?: AccountProfile) => void;
   onAddQuickSite: () => void;
+  onDropBookmark?: (bookmarkId: string) => void;
+  onContextMenu?: (e: React.MouseEvent, site: QuickSite) => void;
 }
 
 const CATEGORIES: { id: QuickSiteCategory | 'all'; label: string }[] = [
@@ -26,9 +28,12 @@ export const QuickSitesSection: React.FC<QuickSitesSectionProps> = ({
   quickSites,
   accounts,
   onOpenSite,
-  onAddQuickSite
+  onAddQuickSite,
+  onDropBookmark,
+  onContextMenu: onExternalContextMenu
 }) => {
   const [activeCategory, setActiveCategory] = useState<QuickSiteCategory | 'all'>('for_you');
+  const [isDragOver, setIsDragOver] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     site: QuickSite;
     x: number;
@@ -88,7 +93,34 @@ export const QuickSitesSection: React.FC<QuickSitesSectionProps> = ({
   };
 
   return (
-    <section className="relative rounded-2xl bg-deck-card/70 backdrop-blur-md border border-deck-border/60 p-5 shadow-lg">
+    <section
+      onDragOver={e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={e => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const bookmarkId = e.dataTransfer.getData('text/plain');
+        if (bookmarkId && onDropBookmark) {
+          onDropBookmark(bookmarkId);
+        }
+      }}
+      className={`relative rounded-2xl bg-deck-card/70 backdrop-blur-md border ${
+        isDragOver ? 'border-amber-400/80 ring-2 ring-amber-400/30 bg-amber-950/10' : 'border-deck-border/60'
+      } p-5 shadow-lg transition-all duration-200`}
+    >
+      {/* Drag Over Indicator */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-20 rounded-2xl bg-amber-500/10 border-2 border-dashed border-amber-400/80 backdrop-blur-[2px] flex items-center justify-center">
+          <span className="px-4 py-2 rounded-xl bg-slate-900/90 text-amber-300 font-bold text-xs shadow-xl flex items-center gap-2">
+            <span>Drop bookmark here to convert to Quick Link</span>
+          </span>
+        </div>
+      )}
+
       {/* Top Bar: Title & Category Chips */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-deck-border/40">
         <div className="flex items-center space-x-2">
@@ -129,7 +161,15 @@ export const QuickSitesSection: React.FC<QuickSitesSectionProps> = ({
           return (
             <div
               key={site.id}
-              onContextMenu={e => handleContextMenu(e, site)}
+              onContextMenu={e => {
+                if (onExternalContextMenu) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onExternalContextMenu(e, site);
+                } else {
+                  handleContextMenu(e, site);
+                }
+              }}
               className="group relative flex flex-col items-center cursor-pointer select-none"
             >
               {/* Tile Container */}

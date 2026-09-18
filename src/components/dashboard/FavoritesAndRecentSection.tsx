@@ -8,6 +8,9 @@ interface FavoritesAndRecentSectionProps {
   projects: Project[];
   collections: Collection[];
   accounts: AccountProfile[];
+  selectedBookmarkIds?: Set<string>;
+  onToggleSelectBookmark?: (bookmarkId: string) => void;
+  onBookmarkContextMenu?: (e: React.MouseEvent, bookmark: Bookmark) => void;
   onEditBookmark: (bookmark: Bookmark) => void;
   onDeleteBookmark: (bookmarkId: string) => void;
   onDeleteAllBookmarks: () => void;
@@ -20,6 +23,9 @@ export const FavoritesAndRecentSection: React.FC<FavoritesAndRecentSectionProps>
   projects,
   collections,
   accounts,
+  selectedBookmarkIds,
+  onToggleSelectBookmark,
+  onBookmarkContextMenu,
   onEditBookmark,
   onDeleteBookmark,
   onDeleteAllBookmarks,
@@ -131,6 +137,9 @@ export const FavoritesAndRecentSection: React.FC<FavoritesAndRecentSectionProps>
               collection={b.collectionId ? collectionsMap.get(b.collectionId) : undefined}
               account={b.accountProfileId ? accountsMap.get(b.accountProfileId) : undefined}
               accounts={accounts}
+              isSelected={selectedBookmarkIds?.has(b.id)}
+              onToggleSelect={onToggleSelectBookmark}
+              onContextMenu={onBookmarkContextMenu}
               onEdit={onEditBookmark}
               onDelete={onDeleteBookmark}
               onRequestAccountPick={onRequestAccountPick}

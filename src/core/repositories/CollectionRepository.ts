@@ -25,13 +25,57 @@ export class CollectionRepository {
     await db.collections.update(id, updates);
   }
 
-  static async delete(id: string): Promise<void> {
+  static async safeDelete(id: string, deleteContents = false): Promise<void> {
     await db.transaction('rw', [db.collections, db.bookmarks], async () => {
       const associatedBookmarks = await db.bookmarks.where('collectionId').equals(id).toArray();
-      for (const bm of associatedBookmarks) {
-        await db.bookmarks.update(bm.id, { collectionId: undefined });
+      if (deleteContents) {
+        for (const bm of associatedBookmarks) {
+          await db.bookmarks.delete(bm.id);
+        }
+      } else {
+        for (const bm of associatedBookmarks) {
+          await db.bookmarks.update(bm.id, { collectionId: undefined });
+        }
       }
       await db.collections.delete(id);
+    });
+  }
+
+  static async delete(id: string): Promise<void> {
+    return this.safeDelete(id, false);
+  }
+
+  static async merge(sourceId: string, targetId: string): Promise<void> {
+    if (sourceId === targetId) return;
+    await db.transaction('rw', [db.collections, db.bookmarks], async () => {
+      const sourceBookmarks = await db.bookmarks.where('collectionId').equals(sourceId).toArray();
+      for (const bm of sourceBookmarks) {
+        await db.bookmarks.update(bm.id, { collectionId: targetId });
+      }
+      await db.collections.delete(sourceId);
+    });
+  }
+
+  static async duplicate(id: string): Promise<Collection | undefined> {
+    const col = await db.collections.get(id);
+    if (!col) return undefined;
+    const count = await db.collections.count();
+    return this.create({
+      name: `${col.name} (Copy)`,
+      slug: `${col.slug}-copy`,
+      icon: col.icon,
+      color: col.color,
+      description: col.description,
+      isSystem: false,
+      sortOrder: count + 1
+    });
+  }
+
+  static async reorder(orderedIds: string[]): Promise<void> {
+    await db.transaction('rw', db.collections, async () => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await db.collections.update(orderedIds[i], { sortOrder: i + 1 });
+      }
     });
   }
 }
