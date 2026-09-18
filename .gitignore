@@ -23,5 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# Personal bookmark imports
+# Personal bookmark imports and generated exports
 src/assets/bookmarks_*.html
+src/assets/linkdeck_organized_bookmarks.html
+src/assets/linkdeck_backup.json
+scripts/
+
