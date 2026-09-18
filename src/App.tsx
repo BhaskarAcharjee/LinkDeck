@@ -2,20 +2,25 @@ import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import confetti from 'canvas-confetti';
 import { db, seedInitialDataIfNeeded } from './core/db/database';
-import type { Bookmark, Project, AccountProfile, ProjectStage } from './core/types';
+import type { Bookmark, Project, AccountProfile, ProjectStage, QuickSite, Article } from './core/types';
 import { BookmarkRepository } from './core/repositories/BookmarkRepository';
 import { ProjectRepository } from './core/repositories/ProjectRepository';
 import { AccountRepository } from './core/repositories/AccountRepository';
 import { SettingsRepository } from './core/repositories/SettingsRepository';
+import { QuickSiteRepository } from './core/repositories/QuickSiteRepository';
+import { ArticleRepository } from './core/repositories/ArticleRepository';
 import { GoogleAccountRouter } from './services/routing/GoogleAccountRouter';
 
 // UI Components
 import { AppHeader } from './components/layout/AppHeader';
+import { QuickSitesSection } from './components/dashboard/QuickSitesSection';
 import { QuickLaunchBar } from './components/dashboard/QuickLaunchBar';
 import { ActiveProjectsSection } from './components/dashboard/ActiveProjectsSection';
 import { FavoritesAndRecentSection } from './components/dashboard/FavoritesAndRecentSection';
+import { ReadLaterSection } from './components/dashboard/ReadLaterSection';
 import { ProjectDetailView } from './components/projects/ProjectDetailView';
 import { CollectionsView } from './components/collections/CollectionsView';
+import { ArticlesView } from './components/articles/ArticlesView';
 import { CommandPalette } from './components/palette/CommandPalette';
 import { BookmarkFormModal } from './components/bookmarks/BookmarkFormModal';
 import { ProjectFormModal } from './components/projects/ProjectFormModal';
@@ -30,15 +35,18 @@ import { ConfirmDeleteModal } from './components/common/ConfirmDeleteModal';
 export function App() {
   // Reactive IndexedDB data
   const bookmarks = useLiveQuery(() => db.bookmarks.orderBy('sortOrder').toArray()) || [];
+  const quickSites = useLiveQuery(() => db.quickSites.orderBy('sortOrder').toArray()) || [];
+  const articles = useLiveQuery(() => db.articles.orderBy('savedAt').reverse().toArray()) || [];
   const projects = useLiveQuery(() => db.projects.orderBy('sortOrder').toArray()) || [];
   const collections = useLiveQuery(() => db.collections.orderBy('sortOrder').toArray()) || [];
   const accounts = useLiveQuery(() => AccountRepository.getAll()) || [];
   const settings = useLiveQuery(() => db.settings.get('current'));
 
   // Active view state
-  const [currentView, setCurrentView] = useState<'dashboard' | 'project' | 'collections'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'project' | 'collections' | 'articles'>('dashboard');
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeAccountProfileId] = useState<string | null>(null);
+
 
   // Modal states
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
@@ -197,9 +205,35 @@ export function App() {
     setEditingProject(null);
   };
 
-  // Delete All Bookmarks
+  // Quick Site Launch Executor
+  const handleOpenQuickSite = async (site: QuickSite, chosenAccount?: AccountProfile) => {
+    let targetAccount = chosenAccount;
+    if (!targetAccount) {
+      if (site.accountProfileId && site.accountProfileId !== 'default' && site.accountProfileId !== 'ask') {
+        targetAccount = accounts.find(a => a.id === site.accountProfileId);
+      } else if (activeAccount && site.accountProfileId !== 'default') {
+        targetAccount = activeAccount;
+      }
+    }
+
+    const { resolvedUrl } = GoogleAccountRouter.resolve(site.url, targetAccount);
+    await QuickSiteRepository.recordOpen(site.id);
+    window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  // Article Launch Executor
+  const handleOpenArticle = async (article: Article) => {
+    if (article.readingStatus === 'unread') {
+      await ArticleRepository.setStatus(article.id, 'reading');
+    }
+    window.open(article.url, '_blank', 'noopener,noreferrer');
+  };
+
+  // Delete All (Bookmarks, Quick Sites, Articles)
   const handleConfirmDeleteAll = async () => {
     await BookmarkRepository.deleteAll();
+    await QuickSiteRepository.deleteAll();
+    await ArticleRepository.deleteAll();
   };
 
   // Toggle Dark/Light Theme
@@ -242,7 +276,7 @@ export function App() {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-        {bookmarks.length === 0 ? (
+        {bookmarks.length === 0 && quickSites.length === 0 && articles.length === 0 ? (
           // Empty state on fresh run or after delete all
           <StarterPackPrompt
             onLoadStarterPack={handleLoadStarterPack}
@@ -251,6 +285,18 @@ export function App() {
               setEditingBookmark(null);
               setIsBookmarkModalOpen(true);
             }}
+          />
+        ) : currentView === 'articles' ? (
+          // Full Articles / Read Later View
+          <ArticlesView
+            articles={articles}
+            onOpenArticle={handleOpenArticle}
+            onNewArticle={() => {
+              setEditingBookmark(null);
+              setPresetUrlForBookmark('');
+              setIsBookmarkModalOpen(true);
+            }}
+            onBackToDashboard={() => setCurrentView('dashboard')}
           />
         ) : currentView === 'project' && selectedProject ? (
           // Project Workspace View
@@ -313,7 +359,21 @@ export function App() {
         ) : (
           // Primary Developer Dashboard
           <div className="space-y-8">
-            {/* 1. Quick Launch Bar */}
+            {/* 1. Quick Sites Launcher (Large icon launchers ARC/macOS style) */}
+            {quickSites.length > 0 && (
+              <QuickSitesSection
+                quickSites={quickSites}
+                accounts={accounts}
+                onOpenSite={handleOpenQuickSite}
+                onAddQuickSite={() => {
+                  setEditingBookmark(null);
+                  setPresetUrlForBookmark('');
+                  setIsBookmarkModalOpen(true);
+                }}
+              />
+            )}
+
+            {/* 2. Quick Launch Bar (Continue / Recent Strip) */}
             <QuickLaunchBar
               bookmarks={bookmarks}
               accounts={accounts}
@@ -321,7 +381,7 @@ export function App() {
               onRequestAccountPick={handleRequestAccountPick}
             />
 
-            {/* 2. Project Workspaces Strip */}
+            {/* 3. Project Workspaces Strip */}
             {projects.length > 0 && (
               <ActiveProjectsSection
                 projects={projects}
@@ -338,7 +398,7 @@ export function App() {
               />
             )}
 
-            {/* 3. Favorites, Recents, and Categorized Bookmarks */}
+            {/* 4. Favorites, Recents, and Categorized Bookmarks */}
             <FavoritesAndRecentSection
               bookmarks={bookmarks}
               projects={projects}
@@ -355,6 +415,15 @@ export function App() {
               onRequestAccountPick={handleRequestAccountPick}
               onOpenBookmark={handleOpenBookmark}
             />
+
+            {/* 5. Read Later Section */}
+            {articles.length > 0 && (
+              <ReadLaterSection
+                articles={articles}
+                onOpenArticle={handleOpenArticle}
+                onViewAllArticles={() => setCurrentView('articles')}
+              />
+            )}
           </div>
         )}
       </main>
@@ -366,10 +435,18 @@ export function App() {
         isOpen={isPaletteOpen}
         onClose={() => setIsPaletteOpen(false)}
         bookmarks={bookmarks}
+        quickSites={quickSites}
+        articles={articles}
         projects={projects}
         collections={collections}
         accounts={accounts}
         onOpenBookmark={handleOpenBookmark}
+        onOpenQuickSite={handleOpenQuickSite}
+        onOpenArticle={handleOpenArticle}
+        onSelectProject={proj => {
+          setActiveProjectId(proj.id);
+          setCurrentView('project');
+        }}
         onNewBookmark={() => {
           setEditingBookmark(null);
           setPresetUrlForBookmark('');

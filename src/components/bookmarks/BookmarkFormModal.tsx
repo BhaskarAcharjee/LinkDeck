@@ -7,13 +7,19 @@ import {
   User,
   Star,
   Pin,
-  Check
+  Check,
+  Globe,
+  Bookmark as BookmarkIcon,
+  BookOpen
 } from 'lucide-react';
-import type { Bookmark, Project, Collection, AccountProfile, ProjectStage } from '../../core/types';
+import type { Bookmark, Project, Collection, AccountProfile, ProjectStage, LinkType } from '../../core/types';
 import { UrlNormalizer } from '../../services/routing/urlNormalizer';
 import { detectService } from '../../services/routing/serviceRegistry';
 import { DuplicateDetector } from '../../services/routing/duplicateDetector';
 import { ServiceIcon } from '../common/ServiceIcon';
+import { QuickSiteRepository } from '../../core/repositories/QuickSiteRepository';
+import { ArticleRepository } from '../../core/repositories/ArticleRepository';
+import { NetscapeParser } from '../../services/import-export/netscapeParser';
 
 interface BookmarkFormModalProps {
   isOpen: boolean;
@@ -24,6 +30,7 @@ interface BookmarkFormModalProps {
   collections: Collection[];
   accounts: AccountProfile[];
   initialUrl?: string;
+  initialType?: LinkType;
 }
 
 export const BookmarkFormModal: React.FC<BookmarkFormModalProps> = ({
@@ -34,10 +41,13 @@ export const BookmarkFormModal: React.FC<BookmarkFormModalProps> = ({
   projects,
   collections,
   accounts,
-  initialUrl = ''
+  initialUrl = '',
+  initialType = 'bookmark'
 }) => {
+  const [linkType, setLinkType] = useState<LinkType>(initialType);
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
+
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState<string>('');
   const [projectStage, setProjectStage] = useState<ProjectStage>('development');
@@ -97,6 +107,14 @@ export const BookmarkFormModal: React.FC<BookmarkFormModalProps> = ({
     const domain = UrlNormalizer.getDomain(rawUrl);
     const service = detectService(rawUrl);
 
+    // Auto-detect link classification if not editing
+    if (!initialData) {
+      const classification = NetscapeParser.classifyItem(rawUrl, title, []);
+      if (classification.suggestedType) {
+        setLinkType(classification.suggestedType);
+      }
+    }
+
     // Auto-prefill title if currently empty
     if (!title) {
       if (service) {
@@ -145,6 +163,41 @@ export const BookmarkFormModal: React.FC<BookmarkFormModalProps> = ({
       const cleanUrl = UrlNormalizer.clean(url);
       const domain = UrlNormalizer.getDomain(url);
 
+      if (linkType === 'quick_site' && !initialData) {
+        const service = detectService(url);
+        await QuickSiteRepository.create({
+          serviceId: service?.id,
+          title: title.trim(),
+          url: url.trim(),
+          cleanUrl,
+          domain,
+          category: (service?.category as any) || 'utilities',
+          accountProfileId: accountProfileId || undefined,
+          isPinned,
+          isHidden: false,
+          sortOrder: 99
+        });
+        onClose();
+        return;
+      }
+
+      if (linkType === 'article' && !initialData) {
+        await ArticleRepository.create({
+          title: title.trim(),
+          url: url.trim(),
+          cleanUrl,
+          domain,
+          source: domain,
+          excerpt: description.trim() || undefined,
+          tags,
+          readingStatus: 'unread',
+          isFavorite
+        });
+        onClose();
+        return;
+      }
+
+      // Default: Bookmark
       await onSave({
         url: url.trim(),
         cleanUrl,
@@ -185,9 +238,11 @@ export const BookmarkFormModal: React.FC<BookmarkFormModalProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-semibold text-white">
-                  {initialData ? 'Edit Bookmark' : 'Add New Bookmark'}
+                  {initialData ? 'Edit Bookmark' : 'Add New Link'}
                 </h3>
-                <p className="text-xs text-slate-400">Personal Command Center shortcut</p>
+                <p className="text-xs text-slate-400">
+                  {initialData ? 'Update bookmark metadata and routing' : 'Save as Quick Site, Bookmark, or Article'}
+                </p>
               </div>
             </div>
             <button
@@ -197,6 +252,48 @@ export const BookmarkFormModal: React.FC<BookmarkFormModalProps> = ({
               <X size={18} />
             </button>
           </div>
+
+          {/* Save As Selector */}
+          {!initialData && (
+            <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-deck-bg-border mx-6 mt-4">
+              <button
+                type="button"
+                onClick={() => setLinkType('bookmark')}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  linkType === 'bookmark'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <BookmarkIcon className="w-3.5 h-3.5" />
+                <span>Bookmark</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLinkType('quick_site')}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  linkType === 'quick_site'
+                    ? 'bg-deck-accent text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Quick Site</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLinkType('article')}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  linkType === 'article'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Article</span>
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
             {/* Duplicate warning banner */}

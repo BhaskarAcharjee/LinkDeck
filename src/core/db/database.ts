@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Bookmark, Project, Collection, AccountProfile, AppSettings } from '../types';
+import type { Bookmark, Project, Collection, AccountProfile, AppSettings, QuickSite, Article } from '../types';
 
 export class LinkDeckDatabase extends Dexie {
   bookmarks!: Table<Bookmark, string>;
@@ -7,6 +7,8 @@ export class LinkDeckDatabase extends Dexie {
   collections!: Table<Collection, string>;
   accountProfiles!: Table<AccountProfile, string>;
   settings!: Table<AppSettings, string>;
+  quickSites!: Table<QuickSite, string>;
+  articles!: Table<Article, string>;
 
   constructor() {
     super('LinkDeckDB');
@@ -17,6 +19,16 @@ export class LinkDeckDatabase extends Dexie {
       collections: 'id, name, slug, parentId, sortOrder, createdAt',
       accountProfiles: 'id, name, googleAuthUserIndex, isDefault, createdAt',
       settings: 'id'
+    });
+
+    this.version(2).stores({
+      bookmarks: 'id, url, cleanUrl, domain, projectId, projectStage, collectionId, accountProfileId, isFavorite, isPinned, isArchived, openCount, lastOpenedAt, createdAt, updatedAt, sortOrder, *tags',
+      projects: 'id, name, slug, defaultAccountProfileId, sortOrder, createdAt',
+      collections: 'id, name, slug, parentId, sortOrder, createdAt',
+      accountProfiles: 'id, name, googleAuthUserIndex, isDefault, createdAt',
+      settings: 'id',
+      quickSites: 'id, serviceId, url, cleanUrl, domain, category, accountProfileId, isPinned, isHidden, openCount, lastOpenedAt, sortOrder, createdAt',
+      articles: 'id, url, cleanUrl, domain, readingStatus, isFavorite, savedAt, updatedAt, readAt, *tags'
     });
   }
 }
@@ -439,18 +451,146 @@ export async function seedInitialDataIfNeeded(forceStarterPack = false): Promise
     }
   ];
 
-  await db.transaction('rw', [db.accountProfiles, db.collections, db.projects, db.bookmarks, db.settings], async () => {
+  const starterQuickSites: QuickSite[] = [
+    {
+      id: 'qs_chatgpt',
+      serviceId: 'chatgpt',
+      title: 'ChatGPT',
+      url: 'https://chatgpt.com',
+      cleanUrl: 'https://chatgpt.com',
+      domain: 'chatgpt.com',
+      category: 'ai',
+      isPinned: true,
+      isHidden: false,
+      openCount: 20,
+      sortOrder: 1,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'qs_gemini',
+      serviceId: 'gemini',
+      title: 'Gemini',
+      url: 'https://gemini.google.com',
+      cleanUrl: 'https://gemini.google.com',
+      domain: 'gemini.google.com',
+      category: 'ai',
+      isPinned: true,
+      isHidden: false,
+      openCount: 18,
+      sortOrder: 2,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'qs_claude',
+      serviceId: 'claude',
+      title: 'Claude',
+      url: 'https://claude.ai',
+      cleanUrl: 'https://claude.ai',
+      domain: 'claude.ai',
+      category: 'ai',
+      isPinned: true,
+      isHidden: false,
+      openCount: 15,
+      sortOrder: 3,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'qs_github',
+      serviceId: 'github',
+      title: 'GitHub',
+      url: 'https://github.com',
+      cleanUrl: 'https://github.com',
+      domain: 'github.com',
+      category: 'development',
+      isPinned: true,
+      isHidden: false,
+      openCount: 25,
+      sortOrder: 4,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'qs_gmail',
+      serviceId: 'gmail',
+      title: 'Gmail',
+      url: 'https://mail.google.com',
+      cleanUrl: 'https://mail.google.com',
+      domain: 'mail.google.com',
+      category: 'google',
+      accountProfileId: 'acc_personal',
+      isPinned: true,
+      isHidden: false,
+      openCount: 12,
+      sortOrder: 5,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'qs_drive',
+      serviceId: 'google_drive',
+      title: 'Google Drive',
+      url: 'https://drive.google.com',
+      cleanUrl: 'https://drive.google.com',
+      domain: 'drive.google.com',
+      category: 'google',
+      accountProfileId: 'acc_personal',
+      isPinned: true,
+      isHidden: false,
+      openCount: 10,
+      sortOrder: 6,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'qs_youtube',
+      serviceId: 'youtube',
+      title: 'YouTube',
+      url: 'https://youtube.com',
+      cleanUrl: 'https://youtube.com',
+      domain: 'youtube.com',
+      category: 'media',
+      isPinned: true,
+      isHidden: false,
+      openCount: 16,
+      sortOrder: 7,
+      createdAt: now,
+      updatedAt: now
+    },
+    {
+      id: 'qs_canva',
+      serviceId: 'canva',
+      title: 'Canva',
+      url: 'https://www.canva.com',
+      cleanUrl: 'https://www.canva.com',
+      domain: 'canva.com',
+      category: 'design',
+      isPinned: true,
+      isHidden: false,
+      openCount: 8,
+      sortOrder: 8,
+      createdAt: now,
+      updatedAt: now
+    }
+  ];
+
+  await db.transaction('rw', [db.accountProfiles, db.collections, db.projects, db.bookmarks, db.quickSites, db.articles, db.settings], async () => {
     if (forceStarterPack) {
       await db.bookmarks.clear();
       await db.projects.clear();
       await db.collections.clear();
       await db.accountProfiles.clear();
+      await db.quickSites.clear();
+      await db.articles.clear();
     }
 
     await db.accountProfiles.bulkPut(defaultAccounts);
     await db.collections.bulkPut(defaultCollections);
     await db.projects.bulkPut(starterProjects);
     await db.bookmarks.bulkPut(starterBookmarks);
+    await db.quickSites.bulkPut(starterQuickSites);
 
     await db.settings.put({
       id: 'current',

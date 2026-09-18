@@ -1,6 +1,7 @@
 import type { ServiceDefinition } from '../../core/types';
 
 export const KNOWN_SERVICES: ServiceDefinition[] = [
+  // Google Developer & Cloud Consoles
   {
     id: 'google_play_console',
     name: 'Google Play Console',
@@ -73,6 +74,8 @@ export const KNOWN_SERVICES: ServiceDefinition[] = [
     docsUrl: 'https://support.google.com/webmasters',
     consoleUrlTemplate: 'https://search.google.com/search-console'
   },
+
+  // Google Productivity & Media
   {
     id: 'gmail',
     name: 'Gmail',
@@ -107,22 +110,86 @@ export const KNOWN_SERVICES: ServiceDefinition[] = [
     consoleUrlTemplate: 'https://calendar.google.com'
   },
   {
-    id: 'revenuecat',
-    name: 'RevenueCat',
-    domains: ['app.revenuecat.com', 'revenuecat.com'],
+    id: 'google_photos',
+    name: 'Google Photos',
+    domains: ['photos.google.com'],
     pathPatterns: [/.*/],
-    defaultStrategy: 'DIRECT',
-    iconName: 'Receipt',
-    brandColor: '#E84545',
-    category: 'monetization',
-    docsUrl: 'https://www.revenuecat.com/docs',
-    consoleUrlTemplate: 'https://app.revenuecat.com'
+    defaultStrategy: 'GOOGLE_U_PATH',
+    iconName: 'Image',
+    brandColor: '#4285F4',
+    category: 'media',
+    consoleUrlTemplate: 'https://photos.google.com'
   },
+  {
+    id: 'google_docs',
+    name: 'Google Docs',
+    domains: ['docs.google.com'],
+    pathPatterns: [/.*/],
+    defaultStrategy: 'GOOGLE_U_PATH',
+    iconName: 'FileText',
+    brandColor: '#4285F4',
+    category: 'productivity',
+    consoleUrlTemplate: 'https://docs.google.com'
+  },
+  {
+    id: 'google_keep',
+    name: 'Google Keep',
+    domains: ['keep.google.com'],
+    pathPatterns: [/.*/],
+    defaultStrategy: 'GOOGLE_U_PATH',
+    iconName: 'CheckSquare',
+    brandColor: '#FBBC04',
+    category: 'productivity',
+    consoleUrlTemplate: 'https://keep.google.com'
+  },
+
+  // AI & LLM Assistants
+  {
+    id: 'chatgpt',
+    name: 'ChatGPT',
+    domains: ['chatgpt.com', 'chat.openai.com', 'openai.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Sparkles',
+    brandColor: '#10A37F',
+    category: 'ai',
+    consoleUrlTemplate: 'https://chatgpt.com'
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    domains: ['gemini.google.com', 'bard.google.com'],
+    defaultStrategy: 'GOOGLE_U_PATH',
+    iconName: 'Sparkles',
+    brandColor: '#1BA1E3',
+    category: 'ai',
+    consoleUrlTemplate: 'https://gemini.google.com'
+  },
+  {
+    id: 'claude',
+    name: 'Claude',
+    domains: ['claude.ai', 'anthropic.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Sparkles',
+    brandColor: '#D97706',
+    category: 'ai',
+    consoleUrlTemplate: 'https://claude.ai'
+  },
+  {
+    id: 'perplexity',
+    name: 'Perplexity',
+    domains: ['perplexity.ai'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Search',
+    brandColor: '#20B2AA',
+    category: 'ai',
+    consoleUrlTemplate: 'https://perplexity.ai'
+  },
+
+  // Developer Platforms & Utilities
   {
     id: 'github',
     name: 'GitHub',
     domains: ['github.com'],
-    pathPatterns: [/.*/],
     defaultStrategy: 'DIRECT',
     iconName: 'GitBranch',
     brandColor: '#24292F',
@@ -133,7 +200,6 @@ export const KNOWN_SERVICES: ServiceDefinition[] = [
     id: 'vercel',
     name: 'Vercel',
     domains: ['vercel.com'],
-    pathPatterns: [/.*/],
     defaultStrategy: 'DIRECT',
     iconName: 'Triangle',
     brandColor: '#000000',
@@ -141,21 +207,19 @@ export const KNOWN_SERVICES: ServiceDefinition[] = [
     consoleUrlTemplate: 'https://vercel.com/dashboard'
   },
   {
-    id: 'figma',
-    name: 'Figma',
-    domains: ['figma.com'],
-    pathPatterns: [/.*/],
+    id: 'supabase',
+    name: 'Supabase',
+    domains: ['supabase.com'],
     defaultStrategy: 'DIRECT',
-    iconName: 'Figma',
-    brandColor: '#F24E1E',
-    category: 'design',
-    consoleUrlTemplate: 'https://www.figma.com'
+    iconName: 'Database',
+    brandColor: '#3ECF8E',
+    category: 'cloud',
+    consoleUrlTemplate: 'https://supabase.com/dashboard'
   },
   {
     id: 'linear',
     name: 'Linear',
     domains: ['linear.app'],
-    pathPatterns: [/.*/],
     defaultStrategy: 'DIRECT',
     iconName: 'CheckSquare',
     brandColor: '#5E6AD2',
@@ -166,7 +230,6 @@ export const KNOWN_SERVICES: ServiceDefinition[] = [
     id: 'sentry',
     name: 'Sentry',
     domains: ['sentry.io'],
-    pathPatterns: [/.*/],
     defaultStrategy: 'DIRECT',
     iconName: 'AlertTriangle',
     brandColor: '#362D59',
@@ -174,15 +237,212 @@ export const KNOWN_SERVICES: ServiceDefinition[] = [
     consoleUrlTemplate: 'https://sentry.io'
   },
   {
-    id: 'supabase',
-    name: 'Supabase',
-    domains: ['supabase.com'],
-    pathPatterns: [/.*/],
+    id: 'revenuecat',
+    name: 'RevenueCat',
+    domains: ['app.revenuecat.com', 'revenuecat.com'],
     defaultStrategy: 'DIRECT',
-    iconName: 'Database',
-    brandColor: '#3ECF8E',
-    category: 'cloud',
-    consoleUrlTemplate: 'https://supabase.com/dashboard'
+    iconName: 'Receipt',
+    brandColor: '#E84545',
+    category: 'monetization',
+    docsUrl: 'https://www.revenuecat.com/docs',
+    consoleUrlTemplate: 'https://app.revenuecat.com'
+  },
+  {
+    id: 'leetcode',
+    name: 'LeetCode',
+    domains: ['leetcode.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Code',
+    brandColor: '#FFA116',
+    category: 'developer',
+    consoleUrlTemplate: 'https://leetcode.com'
+  },
+  {
+    id: 'neetcode',
+    name: 'NeetCode',
+    domains: ['neetcode.io'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Code',
+    brandColor: '#10B981',
+    category: 'developer',
+    consoleUrlTemplate: 'https://neetcode.io'
+  },
+  {
+    id: 'geeksforgeeks',
+    name: 'GeeksforGeeks',
+    domains: ['geeksforgeeks.org'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'BookOpen',
+    brandColor: '#2F8D46',
+    category: 'developer',
+    consoleUrlTemplate: 'https://www.geeksforgeeks.org'
+  },
+  {
+    id: 'wakatime',
+    name: 'WakaTime',
+    domains: ['wakatime.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Clock',
+    brandColor: '#00C3FF',
+    category: 'developer',
+    consoleUrlTemplate: 'https://wakatime.com'
+  },
+  {
+    id: 'overleaf',
+    name: 'Overleaf',
+    domains: ['overleaf.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'FileText',
+    brandColor: '#439539',
+    category: 'developer',
+    consoleUrlTemplate: 'https://www.overleaf.com'
+  },
+
+  // Design & Media
+  {
+    id: 'canva',
+    name: 'Canva',
+    domains: ['canva.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Palette',
+    brandColor: '#00C4CC',
+    category: 'design',
+    consoleUrlTemplate: 'https://www.canva.com'
+  },
+  {
+    id: 'figma',
+    name: 'Figma',
+    domains: ['figma.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Figma',
+    brandColor: '#F24E1E',
+    category: 'design',
+    consoleUrlTemplate: 'https://www.figma.com'
+  },
+  {
+    id: 'youtube_studio',
+    name: 'YouTube Studio',
+    domains: ['studio.youtube.com'],
+    defaultStrategy: 'GOOGLE_AUTHUSER',
+    iconName: 'Video',
+    brandColor: '#FF0000',
+    category: 'media',
+    consoleUrlTemplate: 'https://studio.youtube.com'
+  },
+  {
+    id: 'youtube',
+    name: 'YouTube',
+    domains: ['youtube.com'],
+    pathPatterns: [/^(?!\/studio)/],
+    defaultStrategy: 'GOOGLE_AUTHUSER',
+    iconName: 'Play',
+    brandColor: '#FF0000',
+    category: 'media',
+    consoleUrlTemplate: 'https://youtube.com'
+  },
+  {
+    id: 'spotify',
+    name: 'Spotify',
+    domains: ['spotify.com', 'open.spotify.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Music',
+    brandColor: '#1DB954',
+    category: 'media',
+    consoleUrlTemplate: 'https://open.spotify.com'
+  },
+
+  // Social & Communication
+  {
+    id: 'discord',
+    name: 'Discord',
+    domains: ['discord.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'MessageSquare',
+    brandColor: '#5865F2',
+    category: 'social',
+    consoleUrlTemplate: 'https://discord.com/app'
+  },
+  {
+    id: 'slack',
+    name: 'Slack',
+    domains: ['slack.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'MessageCircle',
+    brandColor: '#4A154B',
+    category: 'social',
+    consoleUrlTemplate: 'https://slack.com'
+  },
+  {
+    id: 'whatsapp',
+    name: 'WhatsApp',
+    domains: ['web.whatsapp.com', 'whatsapp.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'MessageCircle',
+    brandColor: '#25D366',
+    category: 'social',
+    consoleUrlTemplate: 'https://web.whatsapp.com'
+  },
+  {
+    id: 'linkedin',
+    name: 'LinkedIn',
+    domains: ['linkedin.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Linkedin',
+    brandColor: '#0A66C2',
+    category: 'social',
+    consoleUrlTemplate: 'https://www.linkedin.com'
+  },
+  {
+    id: 'x',
+    name: 'X (Twitter)',
+    domains: ['x.com', 'twitter.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Twitter',
+    brandColor: '#000000',
+    category: 'social',
+    consoleUrlTemplate: 'https://x.com'
+  },
+  {
+    id: 'reddit',
+    name: 'Reddit',
+    domains: ['reddit.com'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Share2',
+    brandColor: '#FF4500',
+    category: 'social',
+    consoleUrlTemplate: 'https://www.reddit.com'
+  },
+  {
+    id: 'telegram',
+    name: 'Telegram',
+    domains: ['web.telegram.org', 'telegram.org'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'Send',
+    brandColor: '#24A1DE',
+    category: 'social',
+    consoleUrlTemplate: 'https://web.telegram.org'
+  },
+
+  // Productivity & Shopping & General
+  {
+    id: 'notion',
+    name: 'Notion',
+    domains: ['notion.so'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'FileText',
+    brandColor: '#000000',
+    category: 'productivity',
+    consoleUrlTemplate: 'https://notion.so'
+  },
+  {
+    id: 'amazon',
+    name: 'Amazon',
+    domains: ['amazon.com', 'amazon.in', 'amazon.co.uk'],
+    defaultStrategy: 'DIRECT',
+    iconName: 'ShoppingBag',
+    brandColor: '#FF9900',
+    category: 'shopping',
+    consoleUrlTemplate: 'https://www.amazon.com'
   }
 ];
 
@@ -223,3 +483,8 @@ export function detectService(rawUrl: string): ServiceDefinition | undefined {
   }
   return undefined;
 }
+
+export function getServiceById(id: string): ServiceDefinition | undefined {
+  return KNOWN_SERVICES.find(s => s.id === id);
+}
+

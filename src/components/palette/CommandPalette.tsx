@@ -10,22 +10,29 @@ import {
   Moon,
   Trash2,
   CornerDownLeft,
-  X
+  X,
+  BookOpen
 } from 'lucide-react';
-import type { Bookmark, Project, Collection, AccountProfile } from '../../core/types';
-import { LocalSearchEngine, type SearchResultItem } from '../../services/search/searchEngine';
+import type { Bookmark, Project, Collection, AccountProfile, QuickSite, Article } from '../../core/types';
+import { LocalSearchEngine, type UniversalSearchResult } from '../../services/search/searchEngine';
 import { ServiceIcon } from '../common/ServiceIcon';
+import { BrandIcon } from '../common/BrandIcon';
 import { AccountBadge } from '../common/AccountBadge';
-import { StageBadge } from '../common/StageBadge';
+
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   bookmarks: Bookmark[];
+  quickSites?: QuickSite[];
+  articles?: Article[];
   projects: Project[];
   collections: Collection[];
   accounts: AccountProfile[];
   onOpenBookmark: (bookmark: Bookmark, account?: AccountProfile) => void;
+  onOpenQuickSite?: (site: QuickSite, account?: AccountProfile) => void;
+  onOpenArticle?: (article: Article) => void;
+  onSelectProject?: (project: Project) => void;
   onNewBookmark: () => void;
   onNewProject: () => void;
   onOpenRoutingLab: () => void;
@@ -39,10 +46,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
   bookmarks,
+  quickSites = [],
+  articles = [],
   projects,
   collections,
   accounts,
   onOpenBookmark,
+  onOpenQuickSite,
+  onOpenArticle,
+  onSelectProject,
   onNewBookmark,
   onNewProject,
   onOpenRoutingLab,
@@ -56,18 +68,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const projectsMap = new Map(projects.map(p => [p.id, p]));
   const collectionsMap = new Map(collections.map(c => [c.id, c]));
   const accountsMap = new Map(accounts.map(a => [a.id, a]));
 
-  const searchResults: SearchResultItem[] = LocalSearchEngine.search(
+  const searchResults: UniversalSearchResult[] = LocalSearchEngine.searchUniversal(
     query,
     bookmarks,
-    projectsMap,
+    quickSites,
+    articles,
+    projects,
     collectionsMap,
     accountsMap,
-    15
+    20
   );
+
 
   const isCommandMode = query.startsWith('>');
 
@@ -175,13 +189,35 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       } else {
         const result = searchResults[selectedIndex];
         if (result) {
-          onOpenBookmark(result.bookmark, result.account);
-          onClose();
+          handleSelectResult(result);
         }
       }
     } else if (e.key === 'Escape') {
       onClose();
     }
+  };
+
+  const handleSelectResult = (result: UniversalSearchResult) => {
+    if (result.type === 'quick_site') {
+      if (onOpenQuickSite) {
+        onOpenQuickSite(result.item as QuickSite, result.account);
+      } else if (result.url) {
+        window.open(result.url, '_blank', 'noopener,noreferrer');
+      }
+    } else if (result.type === 'article') {
+      if (onOpenArticle) {
+        onOpenArticle(result.item as Article);
+      } else if (result.url) {
+        window.open(result.url, '_blank', 'noopener,noreferrer');
+      }
+    } else if (result.type === 'project') {
+      if (onSelectProject) {
+        onSelectProject(result.item as Project);
+      }
+    } else {
+      onOpenBookmark(result.item as Bookmark, result.account);
+    }
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -202,7 +238,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <input
               ref={inputRef}
               type="text"
-              placeholder="Search bookmarks, apps, accounts, tags or type > for commands..."
+              placeholder="Search or type @ai, @dev, @article, @project, > for commands..."
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -269,18 +305,27 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 </div>
               )
             ) : searchResults.length > 0 ? (
-              searchResults.map((item, idx) => {
+              searchResults.map((result, idx) => {
                 const isSelected = idx === selectedIndex;
-                const b = item.bookmark;
+
+                const getBadgeStyle = () => {
+                  switch (result.type) {
+                    case 'quick_site':
+                      return 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30';
+                    case 'article':
+                      return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+                    case 'project':
+                      return 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30';
+                    default:
+                      return 'bg-purple-500/15 text-purple-400 border border-purple-500/30';
+                  }
+                };
 
                 return (
                   <div
-                    key={b.id}
+                    key={result.id}
                     data-selected={isSelected}
-                    onClick={() => {
-                      onOpenBookmark(b, item.account);
-                      onClose();
-                    }}
+                    onClick={() => handleSelectResult(result)}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     className={`p-3 rounded-xl flex items-center justify-between cursor-pointer transition gap-3 ${
                       isSelected
@@ -290,7 +335,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   >
                     <div className="flex items-center gap-3 overflow-hidden">
                       <div className="w-8 h-8 rounded-lg bg-deck-bg-elevated border border-deck-bg-border flex items-center justify-center shrink-0">
-                        <ServiceIcon url={b.url} customFavicon={b.favicon} size={18} />
+                        {result.type === 'quick_site' ? (
+                          <BrandIcon serviceId={result.serviceId} domain={result.domain} size="sm" />
+                        ) : result.type === 'article' ? (
+                          <BookOpen className="w-4 h-4 text-emerald-400" />
+                        ) : result.type === 'project' ? (
+                          <Layers className="w-4 h-4 text-indigo-400" />
+                        ) : (
+                          <ServiceIcon url={result.url || ''} size={18} />
+                        )}
                       </div>
 
                       <div className="overflow-hidden">
@@ -300,32 +353,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                               isSelected ? 'text-cyan-300' : 'text-slate-100'
                             }`}
                           >
-                            {b.title}
+                            {result.title}
                           </span>
 
-                          {item.project && (
-                            <span
-                              className="text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold shrink-0"
-                              style={{
-                                backgroundColor: `${item.project.color}20`,
-                                color: item.project.color
-                              }}
-                            >
-                              {item.project.name}
-                            </span>
-                          )}
-
-                          {b.projectStage && (
-                            <StageBadge stage={b.projectStage} size="sm" />
-                          )}
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${getBadgeStyle()}`}>
+                            {result.badge}
+                          </span>
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs text-slate-400 font-mono truncate">
-                          <span className="truncate">{b.domain}</span>
-                          {item.account && (
+                        <div className="flex items-center gap-2 text-xs text-slate-400 font-mono truncate mt-0.5">
+                          {result.subtext && <span className="truncate">{result.subtext}</span>}
+                          {result.account && (
                             <>
                               <span>•</span>
-                              <AccountBadge account={item.account} size="sm" showName />
+                              <AccountBadge account={result.account} size="sm" showName />
                             </>
                           )}
                         </div>
@@ -335,7 +376,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <div className="flex items-center gap-2 shrink-0">
                       {isSelected && (
                         <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                          Launch <CornerDownLeft size={10} />
+                          {result.type === 'project' ? 'Open' : 'Launch'} <CornerDownLeft size={10} />
                         </kbd>
                       )}
                     </div>
@@ -345,10 +386,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             ) : (
               <div className="p-8 text-center space-y-2">
                 <p className="text-sm font-medium text-slate-300">
-                  No bookmarks matching "{query}"
+                  No matches for "{query}"
                 </p>
                 <p className="text-xs text-slate-500">
-                  Try typing <span className="font-mono text-cyan-400">&gt;</span> to run commands or add this link directly.
+                  Tip: Filter with <span className="font-mono text-cyan-400">@ai</span>, <span className="font-mono text-cyan-400">@dev</span>, <span className="font-mono text-cyan-400">@article</span>, <span className="font-mono text-cyan-400">@project</span>, or <span className="font-mono text-cyan-400">&gt;</span> for commands.
                 </p>
               </div>
             )}

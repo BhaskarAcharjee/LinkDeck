@@ -78,6 +78,61 @@ export interface Collection {
   createdAt: number;
 }
 
+export type QuickSiteCategory =
+  | 'for_you'
+  | 'ai'
+  | 'development'
+  | 'communication'
+  | 'google'
+  | 'social'
+  | 'design'
+  | 'media'
+  | 'shopping'
+  | 'utilities';
+
+export interface QuickSite {
+  id: string;
+  serviceId?: string;
+  title: string;
+  url: string;
+  cleanUrl: string;
+  domain: string;
+  icon?: string;
+  category: QuickSiteCategory;
+  accountProfileId?: string; // ID of AccountProfile, or 'default', or 'ask'
+  isPinned: boolean;
+  isHidden: boolean;
+  openCount: number;
+  lastOpenedAt?: number;
+  customColor?: string;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ReadingStatus = 'unread' | 'reading' | 'read' | 'archived';
+
+export interface Article {
+  id: string;
+  title: string;
+  url: string;
+  cleanUrl: string;
+  domain: string;
+  source?: string;
+  favicon?: string;
+  thumbnail?: string;
+  excerpt?: string;
+  tags: string[];
+  readingStatus: ReadingStatus;
+  isFavorite: boolean;
+  estimatedReadingTime?: number; // in minutes
+  savedAt: number;
+  updatedAt: number;
+  readAt?: number;
+}
+
+export type LinkType = 'quick_site' | 'bookmark' | 'article';
+
 export interface ServiceDefinition {
   id: string;
   name: string;
@@ -87,9 +142,11 @@ export interface ServiceDefinition {
   iconName: string;
   brandColor: string;
   authuserParamName?: string;
-  category: 'developer' | 'cloud' | 'analytics' | 'productivity' | 'design' | 'monetization' | 'general';
+  category: 'developer' | 'cloud' | 'analytics' | 'productivity' | 'design' | 'monetization' | 'ai' | 'social' | 'media' | 'shopping' | 'general';
   docsUrl?: string;
   consoleUrlTemplate?: string;
+  svgIcon?: string;
+  shortLabel?: string;
 }
 
 export interface AppSettings {
@@ -120,3 +177,4 @@ export interface DuplicateCheckResult {
   existingBookmark?: Bookmark;
   similarityScore?: number;
 }
+

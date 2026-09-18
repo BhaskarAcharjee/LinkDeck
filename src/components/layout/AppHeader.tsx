@@ -20,8 +20,8 @@ interface AppHeaderProps {
   onOpenImportExport: () => void;
   theme: 'dark' | 'light' | 'system';
   onToggleTheme: () => void;
-  currentView: 'dashboard' | 'project' | 'collections';
-  onNavigateView: (view: 'dashboard' | 'collections') => void;
+  currentView: 'dashboard' | 'project' | 'collections' | 'articles';
+  onNavigateView: (view: 'dashboard' | 'collections' | 'articles') => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -82,6 +82,16 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               }`}
             >
               Collections
+            </button>
+            <button
+              onClick={() => onNavigateView('articles')}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                currentView === 'articles'
+                  ? 'bg-deck-bg-elevated text-emerald-400 border border-deck-bg-border'
+                  : 'text-slate-400 hover:text-white hover:bg-deck-bg-elevated/40'
+              }`}
+            >
+              Articles
             </button>
           </nav>
         </div>

@@ -11,12 +11,18 @@ import {
   Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import type { Bookmark, Collection } from '../../core/types';
+import type { Bookmark, Collection, QuickSite, Article } from '../../core/types';
 import { NetscapeParser, type ParsedBookmarkItem } from '../../services/import-export/netscapeParser';
 import { BackupManager } from '../../services/import-export/backupManager';
 import { BookmarkRepository } from '../../core/repositories/BookmarkRepository';
+import { QuickSiteRepository } from '../../core/repositories/QuickSiteRepository';
+import { ArticleRepository } from '../../core/repositories/ArticleRepository';
 import { CollectionRepository } from '../../core/repositories/CollectionRepository';
 import { UrlNormalizer } from '../../services/routing/urlNormalizer';
+
+interface ImportItemWithSelection extends ParsedBookmarkItem {
+  selectedType: 'quick_site' | 'bookmark' | 'article' | 'skip';
+}
 
 interface ImportExportModalProps {
   isOpen: boolean;
@@ -36,7 +42,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   onDeleteAllBookmarks
 }) => {
   const [activeTab, setActiveTab] = useState<'import' | 'export'>('import');
-  const [parsedItems, setParsedItems] = useState<ParsedBookmarkItem[]>([]);
+  const [parsedItems, setParsedItems] = useState<ImportItemWithSelection[]>([]);
+  const [classificationFilter, setClassificationFilter] = useState<'all' | 'quick_site' | 'bookmark' | 'article'>('all');
   const [fileName, setFileName] = useState<string>('');
   const [isJsonBackup, setIsJsonBackup] = useState(false);
   const [jsonRaw, setJsonRaw] = useState<string>('');
@@ -67,7 +74,10 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
             (parsed.bookmarks || []).map((b: Bookmark) => ({
               title: b.title,
               url: b.url,
-              folderPath: []
+              domain: b.domain,
+              folderPath: [],
+              suggestedType: 'bookmark' as const,
+              selectedType: 'bookmark' as const
             }))
           );
         } catch {
@@ -77,7 +87,11 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         // Standard HTML bookmark export
         setIsJsonBackup(false);
         const items = NetscapeParser.parse(content);
-        setParsedItems(items);
+        const enrichedItems: ImportItemWithSelection[] = items.map(item => ({
+          ...item,
+          selectedType: item.suggestedType
+        }));
+        setParsedItems(enrichedItems);
 
         // Check duplicate count against current database
         const existingCleanUrls = new Set(bookmarks.map(b => b.cleanUrl));
@@ -88,6 +102,14 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     reader.readAsText(file);
   };
 
+  const handleItemTypeChange = (index: number, newType: 'quick_site' | 'bookmark' | 'article' | 'skip') => {
+    setParsedItems(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], selectedType: newType };
+      return updated;
+    });
+  };
+
   const handleExecuteImport = async () => {
     if (parsedItems.length === 0) return;
     setImporting(true);
@@ -96,67 +118,111 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       if (isJsonBackup) {
         await BackupManager.importBackup(jsonRaw, 'merge');
       } else {
-        // Import HTML bookmarks and create collections if needed
         const collectionMap = new Map<string, string>();
         for (const col of collections) {
           collectionMap.set(col.name.toLowerCase(), col.id);
         }
 
         const newBookmarks: Bookmark[] = [];
+        const newQuickSites: QuickSite[] = [];
+        const newArticles: Article[] = [];
         const now = Date.now();
 
         for (let i = 0; i < parsedItems.length; i++) {
           const item = parsedItems[i];
+          if (item.selectedType === 'skip') continue;
+
           const clean = UrlNormalizer.clean(item.url);
-          const domain = UrlNormalizer.getDomain(item.url);
+          const domain = item.domain || UrlNormalizer.getDomain(item.url);
 
-          // Get or create collection from folder name
-          let colId: string | undefined = undefined;
-          if (item.folderPath.length > 0) {
-            const folderName = item.folderPath[item.folderPath.length - 1];
-            const lowerFolder = folderName.toLowerCase();
-            if (collectionMap.has(lowerFolder)) {
-              colId = collectionMap.get(lowerFolder);
-            } else {
-              const newCol = await CollectionRepository.create({
-                name: folderName,
-                slug: folderName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-                sortOrder: collections.length + 1
-              });
-              collectionMap.set(lowerFolder, newCol.id);
-              colId = newCol.id;
+          if (item.selectedType === 'quick_site') {
+            newQuickSites.push({
+              id: 'qs_imp_' + Math.random().toString(36).substring(2, 9) + '_' + (now + i),
+              serviceId: item.serviceId,
+              title: item.title,
+              url: item.url,
+              cleanUrl: clean,
+              domain,
+              category: item.category || 'utilities',
+              isPinned: false,
+              isHidden: false,
+              openCount: 0,
+              sortOrder: newQuickSites.length + 1,
+              createdAt: item.addDate || now,
+              updatedAt: now
+            });
+          } else if (item.selectedType === 'article') {
+            newArticles.push({
+              id: 'art_imp_' + Math.random().toString(36).substring(2, 9) + '_' + (now + i),
+              title: item.title,
+              url: item.url,
+              cleanUrl: clean,
+              domain,
+              source: domain,
+              tags: item.folderPath.map(f => f.toLowerCase().replace(/\s+/g, '-')),
+              readingStatus: 'unread',
+              isFavorite: false,
+              estimatedReadingTime: ArticleRepository.estimateReadingTime(item.title),
+              savedAt: item.addDate || now,
+              updatedAt: now
+            });
+          } else {
+            // Bookmark
+            let colId: string | undefined = undefined;
+            if (item.folderPath.length > 0) {
+              const folderName = item.folderPath[item.folderPath.length - 1];
+              const lowerFolder = folderName.toLowerCase();
+              if (collectionMap.has(lowerFolder)) {
+                colId = collectionMap.get(lowerFolder);
+              } else {
+                const newCol = await CollectionRepository.create({
+                  name: folderName,
+                  slug: folderName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                  sortOrder: collections.length + 1
+                });
+                collectionMap.set(lowerFolder, newCol.id);
+                colId = newCol.id;
+              }
             }
-          }
 
-          newBookmarks.push({
-            id: 'bm_imp_' + Math.random().toString(36).substring(2, 9) + '_' + (now + i),
-            title: item.title,
-            url: item.url,
-            cleanUrl: clean,
-            domain,
-            collectionId: colId,
-            tags: item.folderPath.map(f => f.toLowerCase().replace(/\s+/g, '-')),
-            isFavorite: false,
-            isPinned: false,
-            isArchived: false,
-            openCount: 0,
-            createdAt: item.addDate || now,
-            updatedAt: now,
-            sortOrder: bookmarks.length + i + 1,
-            linkHealth: 'healthy'
-          });
+            newBookmarks.push({
+              id: 'bm_imp_' + Math.random().toString(36).substring(2, 9) + '_' + (now + i),
+              title: item.title,
+              url: item.url,
+              cleanUrl: clean,
+              domain,
+              collectionId: colId,
+              tags: item.folderPath.map(f => f.toLowerCase().replace(/\s+/g, '-')),
+              isFavorite: false,
+              isPinned: false,
+              isArchived: false,
+              openCount: 0,
+              createdAt: item.addDate || now,
+              updatedAt: now,
+              sortOrder: bookmarks.length + i + 1,
+              linkHealth: 'healthy'
+            });
+          }
         }
 
-        await BookmarkRepository.bulkAdd(newBookmarks);
+        // Save batches
+        if (newBookmarks.length > 0) await BookmarkRepository.bulkAdd(newBookmarks);
+        for (const qs of newQuickSites) {
+          await QuickSiteRepository.create(qs);
+        }
+        for (const art of newArticles) {
+          await ArticleRepository.create(art);
+        }
       }
 
       confetti({
-        particleCount: 80,
-        spread: 70,
+        particleCount: 90,
+        spread: 75,
         origin: { y: 0.6 }
       });
 
-      setSuccessMessage(`Successfully imported ${parsedItems.length} bookmarks!`);
+      const totalImported = parsedItems.filter(p => p.selectedType !== 'skip').length;
+      setSuccessMessage(`Successfully imported ${totalImported} items into LinkDeck!`);
       onRefresh();
     } catch (err) {
       alert('Import failed: ' + (err as Error).message);
@@ -164,6 +230,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       setImporting(false);
     }
   };
+
 
   const handleExportJson = async () => {
     const json = await BackupManager.exportBackup();
@@ -263,9 +330,9 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                   />
                 </label>
 
-                {/* File Summary Preview */}
+                {/* File Summary & Classification Review */}
                 {parsedItems.length > 0 && (
-                  <div className="p-4 rounded-xl bg-deck-bg-elevated border border-deck-bg-border space-y-3">
+                  <div className="p-4 rounded-xl bg-deck-bg-elevated border border-deck-bg-border space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {isJsonBackup ? <FileJson size={18} className="text-cyan-400" /> : <FileCode size={18} className="text-emerald-400" />}
@@ -278,31 +345,147 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                       </span>
                     </div>
 
-                    {!isJsonBackup && duplicateCount > 0 && (
+                    {!isJsonBackup && (
+                      <>
+                        {/* Classification Count Badges */}
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="p-2.5 rounded-lg bg-deck-accent/10 border border-deck-accent/30 text-center">
+                            <span className="text-[10px] uppercase tracking-wider font-semibold text-deck-accent block">
+                              Quick Sites
+                            </span>
+                            <span className="text-sm font-bold text-white">
+                              {parsedItems.filter(p => p.selectedType === 'quick_site').length}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-center">
+                            <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-400 block">
+                              Articles
+                            </span>
+                            <span className="text-sm font-bold text-white">
+                              {parsedItems.filter(p => p.selectedType === 'article').length}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/30 text-center">
+                            <span className="text-[10px] uppercase tracking-wider font-semibold text-purple-400 block">
+                              Bookmarks
+                            </span>
+                            <span className="text-sm font-bold text-white">
+                              {parsedItems.filter(p => p.selectedType === 'bookmark').length}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Classification Filter Tabs */}
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                          <div className="flex items-center gap-1 overflow-x-auto">
+                            {(['all', 'quick_site', 'article', 'bookmark'] as const).map(tab => {
+                              const count = tab === 'all'
+                                ? parsedItems.length
+                                : parsedItems.filter(p => p.selectedType === tab).length;
+                              const isActive = classificationFilter === tab;
+                              return (
+                                <button
+                                  key={tab}
+                                  onClick={() => setClassificationFilter(tab)}
+                                  className={`px-2.5 py-1 text-[11px] font-medium rounded-lg capitalize transition-colors ${
+                                    isActive
+                                      ? 'bg-slate-700 text-white font-semibold'
+                                      : 'text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  {tab.replace('_', ' ')} ({count})
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <span className="text-[10px] text-slate-500 shrink-0">
+                            Auto-classified
+                          </span>
+                        </div>
+
+                        {/* Classification Review List */}
+                        <div className="max-h-56 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-800/60">
+                          {parsedItems
+                            .map((item, originalIndex) => ({ item, originalIndex }))
+                            .filter(({ item }) => classificationFilter === 'all' || item.selectedType === classificationFilter)
+                            .slice(0, 50)
+                            .map(({ item, originalIndex }) => (
+                              <div key={originalIndex} className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-semibold text-slate-200 truncate">
+                                      {item.title}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] text-slate-500 font-mono truncate max-w-[180px]">
+                                      {item.domain}
+                                    </span>
+                                    {item.folderPath.length > 0 && (
+                                      <span className="text-[10px] text-slate-600 truncate max-w-[120px]">
+                                        📁 {item.folderPath[item.folderPath.length - 1]}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Segmented Type Switcher */}
+                                <div className="flex items-center bg-slate-900/90 rounded-lg p-0.5 border border-slate-800 shrink-0 self-start sm:self-auto text-[10px]">
+                                  <button
+                                    onClick={() => handleItemTypeChange(originalIndex, 'quick_site')}
+                                    className={`px-2 py-0.5 rounded transition-colors ${
+                                      item.selectedType === 'quick_site'
+                                        ? 'bg-deck-accent text-white font-semibold shadow-sm'
+                                        : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    Site
+                                  </button>
+                                  <button
+                                    onClick={() => handleItemTypeChange(originalIndex, 'bookmark')}
+                                    className={`px-2 py-0.5 rounded transition-colors ${
+                                      item.selectedType === 'bookmark'
+                                        ? 'bg-purple-600 text-white font-semibold shadow-sm'
+                                        : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    Bookmark
+                                  </button>
+                                  <button
+                                    onClick={() => handleItemTypeChange(originalIndex, 'article')}
+                                    className={`px-2 py-0.5 rounded transition-colors ${
+                                      item.selectedType === 'article'
+                                        ? 'bg-emerald-600 text-white font-semibold shadow-sm'
+                                        : 'text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    Article
+                                  </button>
+                                  <button
+                                    onClick={() => handleItemTypeChange(originalIndex, 'skip')}
+                                    className={`px-2 py-0.5 rounded transition-colors ${
+                                      item.selectedType === 'skip'
+                                        ? 'bg-rose-900/60 text-rose-300 font-semibold'
+                                        : 'text-slate-500 hover:text-rose-400'
+                                    }`}
+                                  >
+                                    Skip
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </>
+                    )}
+
+                    {duplicateCount > 0 && !isJsonBackup && (
                       <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
                         <AlertTriangle size={14} className="shrink-0" />
                         <span>
-                          {duplicateCount} duplicate links detected. Existing links will be preserved.
+                          {duplicateCount} duplicate URLs detected.
                         </span>
                       </div>
                     )}
-
-                    {/* Preview list sample */}
-                    <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-800">
-                      {parsedItems.slice(0, 6).map((item, idx) => (
-                        <div key={idx} className="pt-1 text-xs flex items-center justify-between text-slate-300">
-                          <span className="truncate max-w-[340px] font-medium">{item.title}</span>
-                          <span className="text-[11px] text-slate-500 font-mono truncate max-w-[150px]">
-                            {item.folderPath.join(' / ') || 'Root'}
-                          </span>
-                        </div>
-                      ))}
-                      {parsedItems.length > 6 && (
-                        <div className="text-[11px] text-slate-500 pt-1 text-center">
-                          + {parsedItems.length - 6} more links...
-                        </div>
-                      )}
-                    </div>
 
                     <button
                       onClick={handleExecuteImport}
@@ -310,7 +493,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                       className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 text-white font-semibold text-xs shadow-glow-cyan transition flex items-center justify-center gap-2"
                     >
                       <CheckCircle2 size={16} />
-                      <span>{importing ? 'Importing...' : `Import ${parsedItems.length} Bookmarks`}</span>
+                      <span>{importing ? 'Importing...' : `Import ${parsedItems.filter(p => p.selectedType !== 'skip').length} Categorized Items`}</span>
                     </button>
                   </div>
                 )}
